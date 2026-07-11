@@ -37,7 +37,10 @@
               <img id="profileImage" src="" alt="Profile" class="w-full h-full object-cover hidden">
               <span id="profileFallback" class="text-blue-600 font-bold">U</span>
             </div>
-            <div class="font-bold text-slate-800 text-base">ข้อมูลผู้แจ้งซ่อม</div>
+            <div>
+              <div class="font-bold text-slate-800 text-base">ข้อมูลผู้แจ้งซ่อม</div>
+              <div class="text-xs text-slate-400">LINE: <span id="lineNameLabel">-</span></div>
+            </div>
           </div>
           <button type="button" id="toggleEditBtn" class="p-2 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
             ✏️
@@ -50,65 +53,76 @@
             <div class="col-span-2 font-medium text-slate-800" id="dispName">-</div>
             <div class="text-slate-500">ตำแหน่ง:</div>
             <div class="col-span-2 text-slate-800" id="dispPosition">เจ้าหน้าที่ทั่วไป</div>
-            <div class="text-slate-500">สังกัด:</div>
+            <div class="text-slate-500">พื้นที่/สาขา:</div>
             <div class="col-span-2 text-slate-800 flex items-center">
               <span class="w-1.5 h-1.5 rounded-full bg-[#00B900] mr-2"></span>
               <span id="dispDept">สำนักงานสรรพสามิตภาคที่ 9</span>
             </div>
+            <div class="text-slate-500">ส่วน/แผนก:</div>
+            <div class="col-span-2 text-slate-800" id="dispDepartment">ส่วนอำนวยการ</div>
+            <div class="text-slate-500">เบอร์ภายใน:</div>
+            <div class="col-span-2 text-slate-800" id="dispPhone">-</div>
           </div>
         </div>
 
         <div id="profileEditMode" class="hidden grid-cols-1 gap-3 mt-2 animate-in fade-in">
           <input type="hidden" id="lineUserId">
           <div>
-            <label class="text-xs font-medium text-slate-500">ชื่อ-นามสกุล</label>
-            <input type="text" id="inputName" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <label class="text-xs font-medium text-slate-500">ชื่อจริง - นามสกุลจริง <span class="text-red-500">*</span></label>
+            <input type="text" id="inputName" placeholder="เช่น สมชาย ใจดี (ห้ามใช้ชื่อ LINE)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
           </div>
           <div>
             <label class="text-xs font-medium text-slate-500">ตำแหน่ง</label>
             <input type="text" id="inputPosition" value="เจ้าหน้าที่ทั่วไป" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500">พื้นที่สังกัด / สาขา</label>
+            <label class="text-xs font-medium text-slate-500">สาขา / พื้นที่ (Branch)</label>
             <select id="inputDept" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
               <option value="1" data-branch="1">สำนักงานสรรพสามิตภาคที่ 9</option>
-              
               <optgroup label="1. พื้นที่สงขลา">
                 <option value="2" data-branch="2">สาขาเมืองสงขลา</option>
                 <option value="3" data-branch="2">สาขาหาดใหญ่</option>
                 <option value="4" data-branch="2">สาขาสะเดา</option>
               </optgroup>
-              
               <optgroup label="2. พื้นที่ตรัง">
                 <option value="5" data-branch="3">สาขาเมืองตรัง</option>
                 <option value="6" data-branch="3">สาขากันตัง</option>
               </optgroup>
-              
               <optgroup label="3. พื้นที่นราธิวาส">
                 <option value="7" data-branch="4">สาขาเมืองนราธิวาส</option>
                 <option value="8" data-branch="4">สาขาระแงะ</option>
                 <option value="9" data-branch="4">สาขาสุไหงโก-ลก</option>
               </optgroup>
-
               <optgroup label="4. พื้นที่ปัตตานี">
                 <option value="10" data-branch="5">สาขาเมืองปัตตานี</option>
                 <option value="11" data-branch="5">สาขามายอ</option>
               </optgroup>
-
               <optgroup label="5. พื้นที่ยะลา">
                 <option value="12" data-branch="6">สาขาเมืองยะลา</option>
                 <option value="13" data-branch="6">สาขาเบตง</option>
               </optgroup>
-
               <optgroup label="6. พื้นที่พัทลุง">
                 <option value="14" data-branch="7">สาขาเมืองพัทลุง</option>
                 <option value="15" data-branch="7">สาขาตะโหมด</option>
               </optgroup>
-
               <optgroup label="7. พื้นที่สตูล">
                 <option value="16" data-branch="8">สาขาเมืองสตูล</option>
               </optgroup>
             </select>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-500">ส่วน / แผนก (Department)</label>
+            <select id="inputDepartment" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+              <option value="1">ส่วนอำนวยการ</option>
+              <option value="2">ส่วนบริหารจัดเก็บภาษี</option>
+              <option value="3">ส่วนตรวจสอบ ป้องกันและปราบปราม</option>
+              <option value="4">ส่วนกฎหมาย</option>
+              <option value="5">ส่วนเทคโนโลยีสารสนเทศ</option>
+            </select>
+          </div>
+          <div>
+            <label class="text-xs font-medium text-slate-500">เบอร์โทรศัพท์ภายใน (ถ้ามี)</label>
+            <input type="text" id="inputPhone" inputmode="tel" placeholder="เช่น 64305" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
           </div>
         </div>
       </div>
@@ -140,12 +154,15 @@
     </div>
   </div>
 
-  <div class="bg-white border-t border-slate-100 p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] relative z-30">
-    <button id="submitBtn" disabled class="w-full bg-slate-300 text-white font-bold text-lg py-3.5 rounded-xl transition-all flex items-center justify-center">
-      กำลังเตรียมระบบ...
+  <div class="bg-white border-t border-slate-100 p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] relative z-30 flex gap-3">
+    <button id="previewBtn" type="button" class="w-1/2 bg-blue-100 text-blue-600 hover:bg-blue-200 font-bold text-lg py-3.5 rounded-xl transition-all flex items-center justify-center">
+      📄 ดูเอกสาร
+    </button>
+    <button id="submitBtn" disabled class="w-1/2 bg-slate-300 text-white font-bold text-lg py-3.5 rounded-xl transition-all flex items-center justify-center">
+      กำลังเตรียม...
     </button>
   </div>
-
+  
   <div class="text-center pb-3 bg-white relative z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
     <button onclick="toggleDebug()" class="text-[11px] font-medium text-slate-500 hover:text-slate-700 transition-colors inline-flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
       <span id="debugText">เปิด Debug Mode</span>
@@ -163,168 +180,333 @@
     <div id="debugConsole" class="text-green-400 font-mono text-[10px] p-4 h-48 overflow-y-auto w-full"></div>
   </div>
 
+  <div id="previewScreen" class="hidden fixed inset-0 z-[100] bg-slate-100 flex flex-col h-[100dvh]">
+    <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm shrink-0">
+      <div class="font-bold text-lg text-slate-800 flex items-center gap-2">
+        <span>📄 ตรวจสอบเอกสารก่อนส่ง</span>
+      </div>
+      <button id="closePreviewBtn" class="text-slate-400 hover:text-slate-600 text-2xl font-bold leading-none px-2">&times;</button>
+    </div>
+    
+    <div class="flex-1 p-0 md:p-2 overflow-hidden relative bg-slate-200">
+      <div id="pdfLoading" class="absolute inset-0 flex flex-col items-center justify-center bg-slate-100 z-10">
+        <div class="w-8 h-8 border-4 border-red-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+        <p class="text-slate-500 text-sm">กำลังโหลดเอกสาร...</p>
+      </div>
+      <iframe id="pdfIframe" class="w-full h-full md:rounded-lg bg-white" src="" onload="document.getElementById('pdfLoading').classList.add('hidden')"></iframe>
+    </div>
+
+    <div class="bg-white border-t border-slate-200 p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] flex flex-col gap-3">
+      <button id="downloadPdfBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-base py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/30">
+        ⬇️ ดาวน์โหลด PDF เก็บไว้
+      </button>
+      <div class="flex gap-3">
+        <button id="backToEditBtn" class="w-1/2 bg-slate-100 text-slate-600 border border-slate-300 font-bold text-base py-3.5 rounded-xl transition-all">
+          ✏️ กลับไปแก้ไข
+        </button>
+        <button id="confirmFromPreviewBtn" class="w-1/2 bg-[#00B900] hover:bg-[#009900] text-white font-bold text-base py-3.5 rounded-xl transition-all shadow-lg shadow-green-500/30">
+          ✅ ยืนยันแจ้งซ่อม
+        </button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    // ฟังก์ชันเขียน Log
+    // ---------- Helpers ----------
+    const $ = (id) => document.getElementById(id);
+
+    // ---------- State ----------
+    let currentTicketPayload = null;   // payload สำหรับ createTicket (เก็บ docPdfUrl ที่สร้างแล้ว)
+    let isEditingProfile = false;
+    let isDebugOpen = false;
+    let lineDisplayName = "";           // ชื่อ LINE ปัจจุบัน (ใช้ตรวจว่าห้ามกรอกชื่อจริงซ้ำ)
+
+    // ---------- Debug console ----------
     function logDebug(msg) {
-      document.getElementById('debugConsole').innerHTML += `<div>> ${msg}</div>`;
-      // เลื่อน Scrollbar ลงมาล่างสุดอัตโนมัติเมื่อมีข้อความใหม่
-      const consoleDiv = document.getElementById('debugConsole');
+      const consoleDiv = $('debugConsole');
+      consoleDiv.innerHTML += `<div>> ${msg}</div>`;
       consoleDiv.scrollTop = consoleDiv.scrollHeight;
     }
 
-    // ฟังก์ชันเปิด-ปิดหน้าต่าง Debug
-    let isDebugOpen = false;
     function toggleDebug() {
       isDebugOpen = !isDebugOpen;
-      const container = document.getElementById('debugContainer');
-      const arrow = document.getElementById('debugArrow');
-      const text = document.getElementById('debugText');
-      
-      if (isDebugOpen) {
-        container.classList.remove('translate-y-full');
-        container.classList.add('translate-y-0');
-        arrow.style.transform = 'rotate(180deg)';
-        text.innerText = 'ปิด Debug Mode';
-      } else {
-        container.classList.remove('translate-y-0');
-        container.classList.add('translate-y-full');
-        arrow.style.transform = 'rotate(0deg)';
-        text.innerText = 'เปิด Debug Mode';
-      }
+      const container = $('debugContainer');
+      container.classList.toggle('translate-y-full', !isDebugOpen);
+      container.classList.toggle('translate-y-0', isDebugOpen);
+      $('debugArrow').style.transform = isDebugOpen ? 'rotate(180deg)' : 'rotate(0deg)';
+      $('debugText').innerText = isDebugOpen ? 'ปิด Debug Mode' : 'เปิด Debug Mode';
     }
 
-    // สลับโหมดแก้ไขโปรไฟล์
-    let isEditingProfile = false;
-    document.getElementById("toggleEditBtn").addEventListener("click", () => {
+    // ---------- Profile edit toggle ----------
+    $("toggleEditBtn").addEventListener("click", () => {
       isEditingProfile = !isEditingProfile;
-      if(isEditingProfile) {
-        document.getElementById("profileDisplayMode").classList.replace("block", "hidden");
-        document.getElementById("profileEditMode").classList.replace("hidden", "grid");
-        document.getElementById("toggleEditBtn").innerHTML = "💾";
+      if (isEditingProfile) {
+        $("profileDisplayMode").classList.replace("block", "hidden");
+        $("profileEditMode").classList.replace("hidden", "grid");
+        $("toggleEditBtn").innerHTML = "💾";
       } else {
-        // อัปเดตข้อมูลกลับไปหน้าแสดงผล
-        document.getElementById("dispName").innerText = document.getElementById("inputName").value;
-        document.getElementById("dispPosition").innerText = document.getElementById("inputPosition").value;
-        const deptSelect = document.getElementById("inputDept");
-        document.getElementById("dispDept").innerText = deptSelect.options[deptSelect.selectedIndex].text;
-        
-        document.getElementById("profileEditMode").classList.replace("grid", "hidden");
-        document.getElementById("profileDisplayMode").classList.replace("hidden", "block");
-        document.getElementById("toggleEditBtn").innerHTML = "✏️";
+        const deptSelect = $("inputDept");
+        const departmentSelect = $("inputDepartment");
+        $("dispName").innerText = $("inputName").value;
+        $("dispPosition").innerText = $("inputPosition").value;
+        $("dispDept").innerText = deptSelect.options[deptSelect.selectedIndex].text;
+        $("dispDepartment").innerText = departmentSelect.options[departmentSelect.selectedIndex].text;
+        $("dispPhone").innerText = $("inputPhone").value.trim() || "-";
+        $("profileEditMode").classList.replace("grid", "hidden");
+        $("profileDisplayMode").classList.replace("hidden", "block");
+        $("toggleEditBtn").innerHTML = "✏️";
       }
     });
 
-    // 1. เริ่มต้นระบบ LIFF
+    // ---------- Init (LIFF) ----------
     async function initApp() {
       try {
         await liff.init({ liffId: MY_LIFF_ID });
         if (!liff.isLoggedIn()) { liff.login(); return; }
 
         const profile = await liff.getProfile();
-        
-        // ตั้งค่าข้อมูลเริ่มต้นให้ผู้ใช้
-        document.getElementById("inputName").value = profile.displayName;
-        document.getElementById("dispName").innerText = profile.displayName;
-        document.getElementById("lineUserId").value = profile.userId;
-        
+        lineDisplayName = profile.displayName;
+        $("lineNameLabel").innerText = profile.displayName;
+        $("lineUserId").value = profile.userId;
+        // ไม่เติมชื่อ LINE ลงช่องชื่อจริง — บังคับให้ผู้ใช้กรอกชื่อ-นามสกุลจริงเอง
+        $("dispName").innerHTML = '<span class="text-red-500">— กรุณากรอกชื่อจริง-นามสกุลจริง —</span>';
+
         if (profile.pictureUrl) {
-          const img = document.getElementById("profileImage");
+          const img = $("profileImage");
           img.src = profile.pictureUrl;
           img.classList.remove("hidden");
-          document.getElementById("profileFallback").classList.add("hidden");
+          $("profileFallback").classList.add("hidden");
         }
 
-        // โหลดเสร็จ เปิดหน้าฟอร์ม
-        document.getElementById("loading").classList.add("hidden");
-        document.getElementById("formContainer").classList.remove("hidden");
+        $("loading").classList.add("hidden");
+        $("formContainer").classList.remove("hidden");
 
-        const btn = document.getElementById("submitBtn");
+        const btn = $("submitBtn");
         btn.disabled = false;
         btn.innerText = "ยืนยันแจ้งซ่อม";
-        btn.className = "w-full bg-[#00B900] hover:bg-[#009900] text-white font-bold text-lg py-3.5 rounded-xl shadow-lg shadow-green-500/30 transition-all flex items-center justify-center";
-
+        btn.className = "w-1/2 bg-[#00B900] hover:bg-[#009900] text-white font-bold text-lg py-3.5 rounded-xl shadow-lg shadow-green-500/30 transition-all flex items-center justify-center";
       } catch (error) {
         logDebug("ERROR: " + error.message);
         alert("LIFF Error: " + error.message);
       }
     }
 
-    // 2. จัดการส่งฟอร์ม (ยิง API แบบข้อความธรรมดา หลบ CORS)
-    document.getElementById("submitBtn").addEventListener("click", function() {
-      if (!document.getElementById("ticketForm").checkValidity()) {
-        document.getElementById("ticketForm").reportValidity();
+    // ---------- Backend ----------
+    async function callBackend(actionName, payloadData) {
+      logDebug("Sending payload to " + actionName);
+      const response = await fetch(GAS_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: actionName, data: payloadData })
+      });
+      return await response.json();
+    }
+
+    // ---------- Form data collectors ----------
+    // ข้อมูลแบบ label (ข้อความ) สำหรับสร้างเอกสาร PDF
+    // ลบ emoji ออกจากข้อความ (เอกสารราชการห้ามมี emoji)
+    function stripEmoji(s) {
+      return String(s)
+        .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}]/gu, '')
+        .replace(/\s+/g, ' ')
+        .trim();
+    }
+
+    // ทำความสะอาดหมวดหมู่: ตัด emoji + วงเล็บภาษาอังกฤษ เช่น "💻 ฮาร์ดแวร์ (Hardware)" -> "ฮาร์ดแวร์"
+    function cleanCategory(s) {
+      return stripEmoji(s).replace(/\s*\([A-Za-z\s]+\)\s*/g, '').trim();
+    }
+
+    // ชื่อเต็มทางการของสาขา: ประกอบจาก optgroup (พื้นที่) + ข้อความ option
+    // เช่น optgroup "5. พื้นที่ยะลา" + "สาขาเบตง" -> "สำนักงานสรรพสามิตพื้นที่ยะลา สาขาเบตง"
+    function fullBranchName(optionEl) {
+      const grp = optionEl.parentElement;
+      if (grp && grp.tagName === 'OPTGROUP') {
+        const area = grp.label.replace(/^\s*\d+\.\s*พื้นที่\s*/, '').trim();
+        return 'สำนักงานสรรพสามิตพื้นที่' + area + ' ' + optionEl.text;
+      }
+      return optionEl.text; // สำนักงานสรรพสามิตภาคที่ 9 (เป็นชื่อเต็มอยู่แล้ว)
+    }
+
+    function collectDocumentData() {
+      const deptSelect = $("inputDept");
+      const departmentSelect = $("inputDepartment");
+      const categorySelect = $("category");
+      const branchFull = fullBranchName(deptSelect.options[deptSelect.selectedIndex]);      // ชื่อเต็มสาขา (BRANCH)
+      const departmentText = departmentSelect.options[departmentSelect.selectedIndex].text; // ส่วน (DEPARTMENT)
+      return {
+        name: $("inputName").value,
+        position: $("inputPosition").value,
+        // ส่วนราชการ ในบันทึกข้อความ = ชื่อเต็มสาขา + ส่วน
+        department: branchFull + ' ' + departmentText,
+        phone: $("inputPhone").value.trim() || '-', // เบอร์โทรศัพท์ภายใน (แทนที่ - หลังโทร.)
+        asset_id: $("assetId").value.trim(),
+        problem_type: cleanCategory(categorySelect.options[categorySelect.selectedIndex].text), // ตัด emoji + (English)
+        description: $("description").value.trim()
+      };
+    }
+
+    // payload แบบ id สำหรับบันทึกลงฐานข้อมูล (createTicket)
+    function buildTicketPayload() {
+      const deptSelect = $("inputDept");
+      const deptOption = deptSelect.options[deptSelect.selectedIndex];
+      const assetId = $("assetId").value.trim();
+      const desc = $("description").value.trim();
+      return {
+        lineUserId: $("lineUserId").value,
+        displayName: $("inputName").value,
+        position: $("inputPosition").value,
+        deptId: parseInt(deptSelect.value),
+        branchId: parseInt(deptOption.getAttribute("data-branch")),
+        departmentId: parseInt($("inputDepartment").value), // ส่วน 1-5 (backend เพิ่มคอลัมน์รองรับภายหลัง)
+        categoryId: parseInt($("category").value),
+        issueDetail: assetId ? `[${assetId}] ${desc}` : desc,
+        imageUrl: null,
+        docPdfUrl: null
+      };
+    }
+
+    // ---------- ตรวจสอบชื่อผู้แจ้ง (บังคับชื่อจริง ห้ามซ้ำชื่อ LINE) ----------
+    function openProfileEdit() {
+      if (!isEditingProfile) $("toggleEditBtn").click();
+      $("inputName").focus();
+    }
+
+    function validateReporterName() {
+      const name = $("inputName").value.trim();
+      if (!name) {
+        alert("กรุณากรอกชื่อจริง-นามสกุลจริงของผู้แจ้งซ่อม");
+        openProfileEdit();
+        return false;
+      }
+      if (name.split(/\s+/).length < 2) {
+        alert("กรุณากรอกทั้งชื่อจริงและนามสกุลจริง");
+        openProfileEdit();
+        return false;
+      }
+      if (name.toLowerCase() === lineDisplayName.trim().toLowerCase()) {
+        alert("กรุณาใช้ชื่อจริง-นามสกุลจริง (ห้ามใช้ชื่อ LINE)");
+        openProfileEdit();
+        return false;
+      }
+      return true;
+    }
+
+    // ---------- Preview (ดูเอกสาร) ----------
+    $("previewBtn").addEventListener("click", async function () {
+      const form = $("ticketForm");
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+      if (!validateReporterName()) return;
+      if (isEditingProfile) $("toggleEditBtn").click();
+
+      currentTicketPayload = buildTicketPayload();
+
+      const btn = this;
+      const originalText = btn.innerHTML;
+      btn.innerHTML = "⏳ กำลังสร้าง...";
+      btn.disabled = true;
+      $("submitBtn").disabled = true;
+
+      try {
+        const response = await callBackend("generateDocument", collectDocumentData());
+        if (response.status === 'success') {
+          currentTicketPayload.docPdfUrl = response.url;
+          const previewUrl = response.url
+            .replace('/view?usp=drivesdk', '/preview')
+            .replace('/view', '/preview');
+
+          $('pdfLoading').classList.remove('hidden');
+          $('pdfIframe').src = previewUrl;
+          $('previewScreen').classList.remove('hidden');
+        } else {
+          alert("เกิดข้อผิดพลาดในการสร้างเอกสาร: " + response.message);
+        }
+      } catch (error) {
+        alert("ติดต่อเซิร์ฟเวอร์ล้มเหลว: " + error.message);
+      } finally {
+        btn.innerHTML = originalText;
+        btn.disabled = false;
+        $("submitBtn").disabled = false;
+      }
+    });
+
+    // ---------- Close preview ----------
+    // ซ่อนหน้าพรีวิวอย่างเดียว (ใช้หลัง submit สำเร็จ — PDF ถูกผูกกับ ticket แล้ว ห้ามลบ)
+    function hidePreview() {
+      $('previewScreen').classList.add('hidden');
+      $('pdfIframe').src = "";
+    }
+
+    // ยกเลิกพรีวิว: ปิดหน้า -> ลบ PDF ชั่วคราวทิ้งจาก Drive -> เคลียร์ payload
+    // (ถ้าผู้ใช้ไปกดยืนยันที่หน้าหลักภายหลัง ระบบจะสร้างเอกสารใหม่)
+    function cancelPreview() {
+      const tempUrl = currentTicketPayload && currentTicketPayload.docPdfUrl;
+      hidePreview();
+      currentTicketPayload = null;
+      if (tempUrl) {
+        // ลบแบบ fire-and-forget ไม่ให้ค้างหน้าจอ
+        callBackend("deleteTempPdf", { url: tempUrl })
+          .then(() => logDebug("Temp PDF deleted"))
+          .catch((e) => logDebug("deleteTempPdf failed: " + e.message));
+      }
+    }
+    $("backToEditBtn").addEventListener("click", cancelPreview);
+    $("closePreviewBtn").addEventListener("click", cancelPreview);
+
+    // ---------- Download PDF (เซฟลงเครื่องผู้ใช้) ----------
+    $("downloadPdfBtn").addEventListener("click", function () {
+      const url = currentTicketPayload && currentTicketPayload.docPdfUrl;
+      if (!url) { alert("ยังไม่มีเอกสารให้ดาวน์โหลด"); return; }
+      const match = url.match(/[-\w]{25,}/); // ดึง File ID จาก URL
+      if (!match) { alert("ไม่พบไฟล์เอกสาร"); return; }
+      const downloadUrl = "https://drive.google.com/uc?export=download&id=" + match[0];
+      // ใน LINE ให้เปิดเบราว์เซอร์ภายนอกเพื่อให้ดาวน์โหลดได้ (in-app browser บล็อกการเซฟไฟล์)
+      if (typeof liff !== 'undefined' && liff.isInClient()) {
+        liff.openWindow({ url: downloadUrl, external: true });
+      } else {
+        window.open(downloadUrl, "_blank");
+      }
+    });
+
+    // ---------- Submit (ยืนยันแจ้งซ่อม) ----------
+    async function executeSubmit(btnElement) {
+      const form = $("ticketForm");
+      if (!form.checkValidity()) { form.reportValidity(); return; }
+      if (!validateReporterName()) return;
+
+      // บังคับตรวจสอบเอกสารก่อนยืนยัน — ถ้ายังไม่มี PDF ที่พรีวิวแล้ว ให้เปิดหน้าพรีวิวก่อน
+      if (!currentTicketPayload || !currentTicketPayload.docPdfUrl) {
+        alert('กรุณากดปุ่ม "📄 ดูเอกสาร" เพื่อตรวจสอบเอกสารก่อนยืนยันแจ้งซ่อม');
+        $("previewBtn").click();
         return;
       }
 
-      // บังคับเซฟโปรไฟล์ถ้ายังเปิดโหมดแก้ไขค้างไว้
-      if(isEditingProfile) document.getElementById("toggleEditBtn").click();
+      const originalText = btnElement.innerHTML;
+      btnElement.disabled = true;
+      btnElement.innerHTML = "⏳ กำลังบันทึก...";
 
-      const btn = document.getElementById("submitBtn");
-      btn.disabled = true;
-      btn.innerText = "⏳ กำลังส่งข้อมูล...";
-      btn.classList.replace("bg-[#00B900]", "bg-slate-400");
-
-      const deptSelect = document.getElementById("inputDept");
-      const selectedOption = deptSelect.options[deptSelect.selectedIndex];
-
-      // รวบรวมข้อมูล Asset ID และ Description เข้าด้วยกันใน Issue Detail
-      const assetIdVal = document.getElementById("assetId").value.trim();
-      const descVal = document.getElementById("description").value.trim();
-      const finalIssueDetail = assetIdVal ? `[${assetIdVal}] ${descVal}` : descVal;
-
-      const payload = {
-        action: "createTicket",
-        data: {
-          lineUserId: document.getElementById("lineUserId").value,
-          displayName: document.getElementById("inputName").value, 
-          position: document.getElementById("inputPosition").value, 
-          deptId: parseInt(selectedOption.value), 
-          branchId: parseInt(selectedOption.getAttribute("data-branch")), 
-          categoryId: parseInt(document.getElementById("category").value),
-          issueDetail: finalIssueDetail, // ใส่ข้อมูลที่มัดรวมกันแล้ว
-          imageUrl: null,
-          docPdfUrl: null
-        }
-      };
-
-      logDebug("Sending payload: " + JSON.stringify(payload));
-
-      // ใช้วิธี POST แบบข้อความธรรมดา หลบการตรวจจับ Preflight (CORS) ของเบราว์เซอร์
-      // 🌟 ท่าไม้ตาย: แปลงข้อมูลทั้งหมดแปะไปกับ URL (GET Request)
-      const urlParams = new URLSearchParams({
-        action: 'createTicket',
-        data: JSON.stringify(payload.data)
-      });
-      const finalUrl = GAS_API_URL + '?' + urlParams.toString();
-
-      logDebug("Sending GET request to: " + finalUrl);
-
-      // ส่งออกแบบ GET ซึ่งเบราว์เซอร์จะไม่บล็อก CORS แน่นอน
-      fetch(finalUrl, {
-        method: 'GET'
-      })
-      .then(res => res.json())
-      .then(data => {
-        logDebug("Response: " + JSON.stringify(data));
-        if(data.status === 'success') {
-          alert(`✅ แจ้งซ่อมสำเร็จ!\nรหัสอ้างอิงของคุณคือ: TK-${data.ticketId}`);
-          liff.closeWindow(); 
+      try {
+        const response = await callBackend("createTicket", currentTicketPayload);
+        if (response.status === 'success') {
+          alert(`✅ แจ้งซ่อมสำเร็จ!\nรหัสอ้างอิงของคุณคือ: TK-${response.ticketId}`);
+          form.reset();
+          currentTicketPayload = null;
+          hidePreview();
+          if (typeof liff !== 'undefined' && liff.isInClient()) { liff.closeWindow(); }
         } else {
-          alert("❌ แจ้งซ่อมไม่สำเร็จ: " + data.message);
+          alert("❌ แจ้งซ่อมไม่สำเร็จ: " + response.message);
         }
-      })
-      .catch(err => {
-        alert("❌ ติดต่อเซิร์ฟเวอร์ไม่ได้ ดู Log นะครับ");
-        logDebug("API Error: " + err);
-      })
-      .finally(() => {
-        btn.disabled = false;
-        btn.innerText = "ยืนยันแจ้งซ่อม";
-        btn.classList.replace("bg-slate-400", "bg-[#00B900]");
-      });
-    });
+      } catch (error) {
+        alert("❌ ติดต่อเซิร์ฟเวอร์ไม่ได้");
+      } finally {
+        btnElement.disabled = false;
+        btnElement.innerHTML = originalText;
+      }
+    }
 
-    // เริ่มต้นแอป
+    $("confirmFromPreviewBtn").addEventListener("click", function () { executeSubmit(this); });
+    $("submitBtn").addEventListener("click", function () { executeSubmit(this); });
+
     initApp();
   </script>
 </body>
