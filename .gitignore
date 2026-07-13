@@ -1,0 +1,19 @@
+# ===== ห้าม commit เด็ดขาด: ไฟล์ backend ที่มี DB credentials =====
+Code.gs
+**/Code.gs
+*.secret
+.env
+.env.*
+
+# ไฟล์ context/บันทึกส่วนตัว (เก็บไว้ในเครื่อง ไม่ต้องขึ้น repo)
+ต่อจาก*.md
+NOTES*.md
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Netlify local
+.netlify/
