@@ -373,9 +373,14 @@
   async function init() {
     setStaffUI();
     // ระบุตัวจาก LINE ถ้าเปิดผ่าน LIFF (ไม่บังคับ — เฟส 0 จะทำ role gate เต็ม)
+    // ใช้ LIFF app ตัวที่ 2 (ADMIN_LIFF_ID) ที่ endpoint ชี้มา admin.html — เปิดผ่านปุ่ม "จัดการงาน" ใน rich menu ของ IT
+    // ถ้ายังไม่ได้ตั้ง ADMIN_LIFF_ID ให้ fallback ไปใช้ MY_LIFF_ID (เปิด URL ตรงบนเดสก์ท็อปก็ยังใช้ได้)
     try {
-      if (typeof MY_LIFF_ID !== 'undefined' && MY_LIFF_ID) {
-        await liff.init({ liffId: MY_LIFF_ID });
+      const adminLiffId = (typeof ADMIN_LIFF_ID !== 'undefined' && ADMIN_LIFF_ID)
+        ? ADMIN_LIFF_ID
+        : (typeof MY_LIFF_ID !== 'undefined' ? MY_LIFF_ID : '');
+      if (adminLiffId) {
+        await liff.init({ liffId: adminLiffId });
         if (liff.isLoggedIn() && !currentStaff) {
           const p = await liff.getProfile();
           currentStaff = p.displayName;
