@@ -27,8 +27,9 @@ const RM = {
   IT_IMAGE_FILE_ID:    '',                // รูปเมนู IT (สองปุ่ม: แจ้งซ่อม | จัดการงาน)
 
   // userId (LINE) ของเจ้าหน้าที่ IT ที่จะได้เมนู IT (ดูจาก USER.LINE_User_ID ใน Supabase)
+  // *** ต้องตั้ง USER.Role ใน Supabase ให้เป็น admin ด้วย (ดู sql/set-admin.sql) ***
   IT_STAFF_USER_IDS: [
-    // 'Uxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx',
+    'U952f17025df2d3d3cd4b36d8a4e7a443',
   ],
 };
 
