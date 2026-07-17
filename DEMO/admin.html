@@ -176,7 +176,7 @@
       id: t.id,
       code: t.code || ('TK-' + t.id),
       detail: t.detail || '(ไม่มีรายละเอียด)',
-      category: t.category || '',
+      category: cleanCategory(t.category || ''),
       branch: t.branch || '',
       reporter: t.reporter || '-',
       assignee: t.assignee || null,
@@ -197,6 +197,16 @@
     if (diff < 86400) return Math.floor(diff/3600) + ' ชม.ที่แล้ว';
     const d = Math.floor(diff/86400);
     return d === 1 ? 'เมื่อวาน' : d + ' วันก่อน';
+  }
+
+  // ISSUE_CATEGORY.Category_Name ใน DB เก็บเป็น "ฮาร์ดแวร์ (Hardware)" — ตัด emoji + วงเล็บอังกฤษ
+  // ให้เหลือ "ฮาร์ดแวร์" เพื่อให้ตรงกับคีย์ใน catColor และป้ายสั้นลง (ล้อกับ cleanCategory ใน index.html)
+  function cleanCategory(s) {
+    return String(s)
+      .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{FE00}-\u{FE0F}]/gu, '')
+      .replace(/\s*\([A-Za-z\s]+\)\s*/g, '')
+      .replace(/\s+/g, ' ')
+      .trim();
   }
 
   const catColor = (c) => ({
