@@ -19,7 +19,7 @@
 
    สัญญา API (ต้องตรงกับที่ admin.html รอ):
      getTickets({})
-       -> { status:'success', tickets:[ { id, code, detail, category, branch,
+       -> { status:'success', tickets:[ { id, code, detail, category, branch, province,
              reporter, assignee, status, createdAt, acceptedAt, closedAt, pdfUrl } ] }
      acceptTicket({ ticketId, staff })      -> { status:'success' }
      updateTicketStatus({ ticketId, status })-> { status:'success' }
@@ -73,7 +73,7 @@ function getTickets(data) {
       SELECT
         t."Ticket_ID", t."Issue_Detail", t."Status", t."IT_In_Charge", t."Doc_PDF_URL",
         t."Created_Date", t."Accepted_Date", t."Closed_Date",
-        c."Category_Name", b."Branch_Name",
+        c."Category_Name", b."Branch_Name", b."Province",
         u."Full_Name"  AS "Reporter_Name",
         it."Full_Name" AS "Assignee_Name"
       FROM "TICKET" t
@@ -95,6 +95,7 @@ function getTickets(data) {
         detail: strOrNull_(rs, 'Issue_Detail') || '(ไม่มีรายละเอียด)',
         category: strOrNull_(rs, 'Category_Name') || '',
         branch: strOrNull_(rs, 'Branch_Name') || '',
+        province: strOrNull_(rs, 'Province') || '',   // ใช้กับแผนที่ 7 จังหวัดใน Dashboard
         reporter: strOrNull_(rs, 'Reporter_Name') || '-',
         // โชว์ชื่อเจ้าหน้าที่ ถ้าหาไม่เจอใน USER ค่อย fallback เป็น userId ดิบ (กันการ์ดว่าง)
         assignee: strOrNull_(rs, 'Assignee_Name') || strOrNull_(rs, 'IT_In_Charge'),
