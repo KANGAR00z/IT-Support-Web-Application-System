@@ -720,10 +720,15 @@
       g += `<line x1="${L}" y1="${y}" x2="${W-R}" y2="${y}" stroke="${grid}" stroke-width="1"/>`;
       g += `<text x="${L-6}" y="${y+3.5}" text-anchor="end" font-size="10" fill="${muted}">${v}</text>`;
     }
-    // แกน X: ป้ายทุก 7 วัน
-    buckets.forEach((b, i) => {
-      if (i % 7 !== 0 && i !== buckets.length - 1) return;
-      const d = new Date(b.end);
+    // แกน X: ป้ายทุก 7 วัน + วันสุดท้าย
+    // แต่ใส่วันสุดท้ายก็ต่อเมื่อห่างจาก tick ก่อนหน้าพอ ไม่งั้นป้ายทับกัน
+    // (30 วัน -> tick ที่ 0,7,14,21,28 ส่วนวันสุดท้ายคือ 29 ห่างแค่ 1 วัน = ชนกัน)
+    const ticks = [];
+    for (let i = 0; i < buckets.length; i += 7) ticks.push(i);
+    const lastI = buckets.length - 1;
+    if (lastI - ticks[ticks.length - 1] >= 4) ticks.push(lastI);
+    ticks.forEach(i => {
+      const d = new Date(buckets[i].end);
       g += `<text x="${px(i)}" y="${H-8}" text-anchor="middle" font-size="10" fill="${muted}">${d.getDate()}/${d.getMonth()+1}</text>`;
     });
     // พื้นที่ใต้เส้น + เส้น 2px
