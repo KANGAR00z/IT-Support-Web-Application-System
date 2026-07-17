@@ -126,7 +126,10 @@
 
   let tickets = [];
   let usingMock = false;
-  let currentStaff = localStorage.getItem('ft_staff') || '';
+  // ตัวตนเจ้าหน้าที่มาจาก LINE login เท่านั้น — จำเป็น เพราะ TICKET.IT_In_Charge เป็น FK
+  // ชี้ USER.LINE_User_ID (constraint fk_ticket_it) DB จึงไม่รับ "ชื่อ" เปล่าๆ
+  let currentStaff = localStorage.getItem('ft_staff') || '';       // ชื่อสำหรับแสดงผล
+  let currentStaffId = localStorage.getItem('ft_staff_id') || '';  // LINE userId ที่ส่งให้ backend
 
   const $ = (id) => document.getElementById(id);
 
@@ -313,10 +316,13 @@
     const t = tickets.find(x => x.id === id);
     if (!t || t.status === toStatus) return;
 
-    // รับงาน (Open -> In Progress) ต้องมีชื่อเจ้าหน้าที่
+    // รับงาน (Open -> In Progress) ต้องรู้ LINE userId ของผู้รับ ไม่ใช่แค่ชื่อ
+    // เพราะ IT_In_Charge เป็น FK -> USER.LINE_User_ID (ชื่อเปล่าๆ DB จะปฏิเสธ)
     const isAccept = (t.status === STATUS.OPEN && toStatus === STATUS.IN_PROGRESS);
-    if (isAccept && !currentStaff) {
-      if (!promptStaff()) return;
+    if (isAccept && !currentStaffId) {
+      alert('ต้องเข้าสู่ระบบ LINE ก่อนจึงจะรับงานได้');
+      ensureLogin();
+      return;
     }
 
     // อัปเดต local ก่อน (optimistic)
@@ -331,7 +337,7 @@
 
     try {
       const res = isAccept
-        ? await callBackend('acceptTicket', { ticketId:id, staff:currentStaff })
+        ? await callBackend('acceptTicket', { ticketId:id, staffUserId:currentStaffId })
         : await callBackend('updateTicketStatus', { ticketId:id, status:toStatus });
       if (!res || res.status !== 'success') throw new Error(res && res.message || 'อัปเดตไม่สำเร็จ');
     } catch (e) {
@@ -341,23 +347,31 @@
     }
   }
 
-  // ---------- เจ้าหน้าที่ปัจจุบัน ----------
+  // ---------- เจ้าหน้าที่ปัจจุบัน (ตัวตนมาจาก LINE เท่านั้น) ----------
   function setStaffUI() {
     if (currentStaff) {
       $('staffName').innerText = currentStaff;
       $('staffName').classList.replace('text-slate-600','text-slate-800');
       $('staffAvatar').innerText = currentStaff.trim().charAt(0) || '?';
+    } else {
+      $('staffName').innerText = 'เข้าสู่ระบบ LINE';
+      $('staffAvatar').innerText = '?';
     }
   }
-  function promptStaff() {
-    const name = prompt('ชื่อเจ้าหน้าที่ IT (ผู้รับงาน):', currentStaff || '');
-    if (name && name.trim()) {
-      currentStaff = name.trim();
-      localStorage.setItem('ft_staff', currentStaff);
-      setStaffUI();
-      return true;
+
+  // พาไปหน้าเข้าสู่ระบบ LINE (ใช้ได้ทั้งในแอป LINE และเบราว์เซอร์เดสก์ท็อป)
+  // ต้องส่ง redirectUri = หน้าปัจจุบัน ไม่งั้น LINE จะพากลับไปที่ endpoint ของ LIFF app
+  // ซึ่งตอนนี้ยัง fallback เป็น MY_LIFF_ID (ชี้ index.html) -> จะหลุดไปหน้าแจ้งซ่อม
+  function ensureLogin() {
+    try {
+      if (typeof liff !== 'undefined' && liff.login) {
+        liff.login({ redirectUri: location.href });
+      } else {
+        alert('โหลด LINE SDK ไม่สำเร็จ');
+      }
+    } catch (e) {
+      alert('เรียกหน้าเข้าสู่ระบบ LINE ไม่สำเร็จ: ' + e.message);
     }
-    return false;
   }
 
   // ---------- PDF ----------
@@ -372,7 +386,7 @@
   function closePdf(){ $('pdfModal').classList.add('hidden'); $('pdfFrame').src=''; }
 
   // ---------- Events ----------
-  $('staffBtn').addEventListener('click', promptStaff);
+  $('staffBtn').addEventListener('click', () => { if (!currentStaffId) ensureLogin(); });
   $('refreshBtn').addEventListener('click', loadTickets);
   $('pdfClose').addEventListener('click', closePdf);
   $('pdfModal').addEventListener('click', (e) => { if (e.target === $('pdfModal')) closePdf(); });
@@ -391,14 +405,21 @@
         : (typeof MY_LIFF_ID !== 'undefined' ? MY_LIFF_ID : '');
       if (adminLiffId) {
         await liff.init({ liffId: adminLiffId });
-        if (liff.isLoggedIn() && !currentStaff) {
-          const p = await liff.getProfile();
-          currentStaff = p.displayName;
-          localStorage.setItem('ft_staff', currentStaff);
-          setStaffUI();
-        }
+        if (!liff.isLoggedIn()) { ensureLogin(); return; }  // เด้งไป login แล้วกลับมาที่หน้านี้
+
+        const p = await liff.getProfile();
+        currentStaffId = p.userId;        // ค่านี้แหละที่ลง IT_In_Charge ได้จริง
+        currentStaff = p.displayName;
+        localStorage.setItem('ft_staff', currentStaff);
+        localStorage.setItem('ft_staff_id', currentStaffId);
+        setStaffUI();
       }
-    } catch (e) { /* เปิดบนเดสก์ท็อปธรรมดาก็ทำงานได้ */ }
+    } catch (e) {
+      // login พังไม่ควรทำให้ดูบอร์ดไม่ได้ — ยังดูได้ แต่กดรับงานจะโดนเตือนให้ login ก่อน
+      console.warn('LINE login ไม่สำเร็จ:', e);
+      currentStaffId = '';
+      setStaffUI();
+    }
     loadTickets();
   }
   init();

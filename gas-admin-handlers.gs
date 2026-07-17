@@ -67,15 +67,20 @@ function getTickets(data) {
     conn = getDbConnection();
 
     // LEFT JOIN เพื่อไม่ให้ตั๋วหายถ้า master data ขาด (เช่นยังไม่มี record ใน USER)
+    // JOIN "USER" 2 ครั้ง: u = ผู้แจ้ง (LINE_User_ID) · it = เจ้าหน้าที่ผู้รับงาน (IT_In_Charge)
+    // เพราะ IT_In_Charge เก็บเป็น LINE_User_ID (FK) ต้องแปลงกลับเป็นชื่อให้หน้าเว็บโชว์
     const sql = `
       SELECT
         t."Ticket_ID", t."Issue_Detail", t."Status", t."IT_In_Charge", t."Doc_PDF_URL",
         t."Created_Date", t."Accepted_Date", t."Closed_Date",
-        c."Category_Name", b."Branch_Name", u."Full_Name"
+        c."Category_Name", b."Branch_Name",
+        u."Full_Name"  AS "Reporter_Name",
+        it."Full_Name" AS "Assignee_Name"
       FROM "TICKET" t
-      LEFT JOIN "ISSUE_CATEGORY" c ON c."Category_ID"  = t."Category_ID"
-      LEFT JOIN "BRANCH"         b ON b."Branch_ID"    = t."Branch_ID"
-      LEFT JOIN "USER"           u ON u."LINE_User_ID" = t."LINE_User_ID"
+      LEFT JOIN "ISSUE_CATEGORY" c  ON c."Category_ID"   = t."Category_ID"
+      LEFT JOIN "BRANCH"         b  ON b."Branch_ID"     = t."Branch_ID"
+      LEFT JOIN "USER"           u  ON u."LINE_User_ID"  = t."LINE_User_ID"
+      LEFT JOIN "USER"           it ON it."LINE_User_ID" = t."IT_In_Charge"
       ORDER BY t."Ticket_ID" DESC
     `;
     stmt = conn.prepareStatement(sql);
@@ -90,8 +95,9 @@ function getTickets(data) {
         detail: strOrNull_(rs, 'Issue_Detail') || '(ไม่มีรายละเอียด)',
         category: strOrNull_(rs, 'Category_Name') || '',
         branch: strOrNull_(rs, 'Branch_Name') || '',
-        reporter: strOrNull_(rs, 'Full_Name') || '-',
-        assignee: strOrNull_(rs, 'IT_In_Charge'),
+        reporter: strOrNull_(rs, 'Reporter_Name') || '-',
+        // โชว์ชื่อเจ้าหน้าที่ ถ้าหาไม่เจอใน USER ค่อย fallback เป็น userId ดิบ (กันการ์ดว่าง)
+        assignee: strOrNull_(rs, 'Assignee_Name') || strOrNull_(rs, 'IT_In_Charge'),
         status: rs.getInt('Status'),
         createdAt: toIsoLocal_(rs, 'Created_Date'),
         acceptedAt: toIsoLocal_(rs, 'Accepted_Date'),
@@ -111,17 +117,34 @@ function getTickets(data) {
 }
 
 // ==========================================
-// 7. รับงาน (Open -> In Progress) + บันทึกชื่อเจ้าหน้าที่
+// 7. รับงาน (Open -> In Progress) + บันทึกเจ้าหน้าที่ผู้รับ
+// -----------------------------------------------------------------------------
+// ⚠️ IT_In_Charge เป็น FK (constraint fk_ticket_it) ชี้ USER."LINE_User_ID"
+//    ต้องส่ง "LINE userId" มา ไม่ใช่ชื่อคน ไม่งั้น DB ปฏิเสธด้วย FK violation
 // ==========================================
 function acceptTicket(data) {
-  let conn = null, stmt = null;
+  let conn = null, stmtChk = null, rsChk = null, stmt = null;
   try {
     const ticketId = parseInt(data && data.ticketId, 10);
-    const staff = (data && data.staff || '').trim();
-    if (!ticketId) return { status: 'error', message: 'ไม่ได้ระบุ ticketId' };
-    if (!staff)    return { status: 'error', message: 'ไม่ได้ระบุชื่อเจ้าหน้าที่ผู้รับงาน' };
+    // รองรับ staffUserId (ชื่อใหม่) และ staff (ชื่อเดิม) เผื่อ frontend เวอร์ชันเก่ายังค้าง cache
+    const staffUserId = String((data && (data.staffUserId || data.staff)) || '').trim();
+    if (!ticketId)    return { status: 'error', message: 'ไม่ได้ระบุ ticketId' };
+    if (!staffUserId) return { status: 'error', message: 'ไม่ได้ระบุผู้รับงาน (ต้องเข้าสู่ระบบ LINE ก่อน)' };
 
     conn = getDbConnection();
+
+    // เช็คตัวตนก่อน เพื่อคืน error ที่มนุษย์อ่านรู้เรื่อง แทน FK violation ดิบๆ จาก Postgres
+    stmtChk = conn.prepareStatement('SELECT "Full_Name" FROM "USER" WHERE "LINE_User_ID" = ?');
+    stmtChk.setString(1, staffUserId);
+    rsChk = stmtChk.executeQuery();
+    if (!rsChk.next()) {
+      return {
+        status: 'error',
+        message: 'ยังไม่มีบัญชีเจ้าหน้าที่คนนี้ในระบบ (USER) — ต้องลงทะเบียนผู้ใช้ก่อนจึงจะรับงานได้'
+      };
+    }
+    const staffName = rsChk.getString('Full_Name');
+
     const sql = `
       UPDATE "TICKET"
       SET "Status" = ?, "IT_In_Charge" = ?, "Accepted_Date" = NOW(), "Closed_Date" = NULL
@@ -129,16 +152,18 @@ function acceptTicket(data) {
     `;
     stmt = conn.prepareStatement(sql);
     stmt.setInt(1, TICKET_STATUS.IN_PROGRESS);
-    stmt.setString(2, staff);
+    stmt.setString(2, staffUserId);
     stmt.setInt(3, ticketId);
 
     const rows = stmt.executeUpdate();
     if (rows === 0) return { status: 'error', message: 'ไม่พบตั๋ว TK-' + ticketId };
 
-    return { status: 'success', message: 'รับงาน TK-' + ticketId + ' แล้ว' };
+    return { status: 'success', message: 'รับงาน TK-' + ticketId + ' โดย ' + staffName, assignee: staffName };
   } catch (error) {
     return { status: 'error', message: error.toString() };
   } finally {
+    if (rsChk) rsChk.close();
+    if (stmtChk) stmtChk.close();
     if (stmt) stmt.close();
     if (conn) conn.close();
   }
