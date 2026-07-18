@@ -26,15 +26,26 @@
      getUsers({})
        -> { status:'success', users:[ { userId, name, position, role, dept,
              branch, province, reported, assigned } ] }
-     updateUserRole({ userId, role })           // role: 'admin' | 'it' | 'staff'
-       -> { status:'success', role:'<ค่าที่บันทึก>' }
+     updateUserRole({ userId, role })           // role รับได้ทั้งพิมพ์เล็ก/ใหญ่: admin/it/staff
+       -> { status:'success', role:'<ค่าที่บันทึกจริงใน DB>' }
 
    Status: 1 = รอรับเรื่อง (Open) · 2 = กำลังดำเนินการ (In Progress) · 3 = เสร็จสิ้น (Closed)
-   Role:   admin = แอดมิน · it = เจ้าหน้าที่ IT · อื่นๆ/Staff = ผู้ใช้งานทั่วไป
-           (ข้อมูลเก่ามี 'Staff' ตัวใหญ่จาก createTicket — frontend เทียบแบบ case-insensitive)
+
+   Role: DB มี CHECK constraint "USER_Role_check" บังคับค่าต้องเป็นหนึ่งใน
+         'Staff' / 'IT' / 'Admin' เป๊ะ (ตัวพิมพ์นี้เท่านั้น — เขียนค่าอื่นจะถูก
+         Postgres ปฏิเสธด้วย error 23514) updateUserRole() รับ role จาก
+         frontend แบบ case-insensitive แล้ว map เป็นตัวพิมพ์ที่ถูกต้องก่อนเขียน
+         เสมอ (ดู ROLE_DB_VALUE ด้านล่าง) ห้าม UPDATE "Role" ตรงๆ ด้วยค่าจาก
+         request โดยไม่ผ่าน map นี้
    ============================================================================= */
 
 const TICKET_STATUS = { OPEN: 1, IN_PROGRESS: 2, CLOSED: 3 };
+
+// DB check constraint "USER_Role_check" อนุญาตเป๊ะแค่ 3 ค่านี้ (ตัวพิมพ์ตามนี้เท่านั้น):
+//   CHECK ("Role" = ANY (ARRAY['Staff','IT','Admin']))
+// รับ key จาก frontend แบบตัวพิมพ์เล็ก (admin/it/staff) แล้ว map เป็นค่าที่ DB ยอมรับ
+// ก่อนเขียนทุกครั้ง — เขียนค่าอื่นที่ไม่ตรงนี้ Postgres จะ reject ด้วย error 23514
+const ROLE_DB_VALUE = { admin: 'Admin', it: 'IT', staff: 'Staff' };
 
 // -----------------------------------------------------------------------------
 // helper: เปิด connection -> เรียก fn -> ปิดเสมอ + แปลง exception เป็น error response
@@ -253,17 +264,18 @@ function getUsers(data) {
 function updateUserRole(data) {
   return withConn_(function (conn) {
     const userId = String((data && data.userId) || '').trim();
-    const role = String((data && data.role) || '').trim().toLowerCase();
+    const key = String((data && data.role) || '').trim().toLowerCase();
+    const dbRole = ROLE_DB_VALUE[key];   // 'admin'->'Admin', 'it'->'IT', 'staff'->'Staff'
     if (!userId) return { status: 'error', message: 'ไม่ได้ระบุ userId' };
-    if (['admin', 'it', 'staff'].indexOf(role) === -1) {
-      return { status: 'error', message: 'บทบาทไม่ถูกต้อง: ' + role + ' (ต้องเป็น admin / it / staff)' };
+    if (!dbRole) {
+      return { status: 'error', message: 'บทบาทไม่ถูกต้อง: ' + key + ' (ต้องเป็น admin / it / staff)' };
     }
 
     const stmt = conn.prepareStatement('UPDATE "USER" SET "Role" = ? WHERE "LINE_User_ID" = ?');
-    stmt.setString(1, role);
+    stmt.setString(1, dbRole);   // ต้องเป็นค่าตาม USER_Role_check เป๊ะ ไม่งั้น Postgres ปฏิเสธ (23514)
     stmt.setString(2, userId);
 
     if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบผู้ใช้คนนี้ในระบบ' };
-    return { status: 'success', role: role };
+    return { status: 'success', role: dbRole };
   });
 }
