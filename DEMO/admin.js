@@ -29,7 +29,9 @@ const COLUMNS = [
 const VIEWS = {
   dashboard: { title:'แดชบอร์ด (Dashboard)', sub:'ภาพรวมงานแจ้งซ่อม · คำนวณจากตั๋วทั้งหมด' },
   board:     { title:'ตารางงาน IT Support (Task Board)', sub:'จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ' },
+  kb:        { title:'ฐานความรู้ (Knowledge Base)', sub:'รวมวิธีแก้ไขปัญหาจากตั๋วที่ปิดงานแล้ว' },
   users:     { title:'ผู้ใช้งาน (Users)', sub:'จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด' },
+  settings:  { title:'ตั้งค่า (Settings)', sub:'บัญชีของฉันและค่าตั้งต้นของแดชบอร์ด' },
 };
 
 // บทบาทผู้ใช้ — DB มีค่าเก่าปนอยู่ ('Staff' ตัวใหญ่จาก createTicket) จึง normalize
@@ -66,6 +68,18 @@ let usingMockUsers = false;
 let usersLoaded = false;
 let userSearch = '';
 let userRoleFilter = 'all';
+// โมดูล Knowledge Base — โหลดแบบ lazy เหมือนกัน
+let kbArticles = [];
+let usingMockKb = false;
+let kbLoaded = false;
+let kbSearch = '';
+let kbCatFilter = 'all';
+// ticketId ที่รอกรอกวิธีแก้ไขใน closeModal ก่อนปิดงานจริง (ดู requestClose/finishClose)
+let pendingCloseId = null;
+// ---------- Settings ----------
+// เก็บไว้ใน localStorage ล้วนๆ (ต่อเบราว์เซอร์ ไม่ใช่ค่าส่วนกลาง) — ยังไม่มีเหตุผลพอจะ
+// เพิ่มตาราง/คอลัมน์ backend สำหรับตั้งค่าที่มีแค่ตัวเดียวตอนนี้
+let agingDays = parseInt(localStorage.getItem('ft_aging_days'), 10) || 3;
 // ตัวตนเจ้าหน้าที่มาจาก LINE login เท่านั้น (เหตุผลดู contract ด้านบน)
 let currentStaff   = localStorage.getItem('ft_staff') || '';      // ชื่อสำหรับแสดงผล
 let currentStaffId = localStorage.getItem('ft_staff_id') || '';   // LINE userId ที่ส่งให้ backend
@@ -158,7 +172,8 @@ function render() {
     list.addEventListener('drop', (e) => {
       e.preventDefault(); colEl.classList.remove('col-over');
       const id = Number(e.dataTransfer.getData('text/plain'));
-      moveTicket(id, col.status);
+      // ปิดงานต้องผ่าน modal เสมอ (ทั้งลากและกดปุ่ม) เพื่อชวนบันทึกวิธีแก้ไขเข้า Knowledge Base
+      if (col.status === STATUS.CLOSED) requestClose(id); else moveTicket(id, col.status);
     });
     board.appendChild(colEl);
   }
@@ -215,7 +230,7 @@ function cardEl(t) {
     e.stopPropagation();
     const act = btn.dataset.act;
     if (act === 'accept')  moveTicket(t.id, STATUS.IN_PROGRESS);
-    if (act === 'close')   moveTicket(t.id, STATUS.CLOSED);
+    if (act === 'close')   requestClose(t.id);
     if (act === 'reopen')  moveTicket(t.id, STATUS.OPEN);
     if (act === 'pdf')     openPdf(t);
   });
@@ -224,7 +239,8 @@ function cardEl(t) {
 }
 
 // ---------- ย้ายสถานะตั๋ว (optimistic update + revert เมื่อ backend ปฏิเสธ) ----------
-async function moveTicket(id, toStatus) {
+// resolutionText: ใช้เฉพาะตอนปิดงาน (toStatus===CLOSED) — มาจาก closeModal ผ่าน requestClose/finishClose
+async function moveTicket(id, toStatus, resolutionText) {
   const t = tickets.find(x => x.id === id);
   if (!t || t.status === toStatus) return;
 
@@ -254,6 +270,17 @@ async function moveTicket(id, toStatus) {
     if (isAccept && res.assignee && res.assignee !== t.assignee) {
       t.assignee = res.assignee;
       render();
+    }
+    // บันทึกวิธีแก้ไขเข้า Knowledge Base — เกิดขึ้นหลังปิดงานสำเร็จเท่านั้น และไม่ทำให้
+    // การปิดงาน "ล้มเหลว" ถ้าขั้นนี้พังต่อ (คนละ resource กัน แค่แจ้งเตือนเบาๆ พอ)
+    if (toStatus === STATUS.CLOSED && resolutionText) {
+      try {
+        const kbRes = await callBackend('addKnowledgeArticle', { ticketId:id, resolutionText, createdBy:currentStaffId });
+        if (!kbRes || kbRes.status !== 'success') throw new Error((kbRes && kbRes.message) || 'ไม่ทราบสาเหตุ');
+        kbLoaded = false;   // บังคับให้โหลดใหม่ครั้งถัดไปที่เข้าหน้า Knowledge Base
+      } catch (kbErr) {
+        alert('⚠️ ปิดงานสำเร็จ แต่บันทึกลง Knowledge Base ไม่สำเร็จ: ' + kbErr.message);
+      }
     }
   } catch (e) {
     Object.assign(t, prev); // revert
@@ -299,6 +326,27 @@ function openPdf(t) {
   $('pdfModal').classList.remove('hidden');
 }
 function closePdf(){ $('pdfModal').classList.add('hidden'); $('pdfFrame').src=''; }
+
+// ---------- ปิดงาน + บันทึกวิธีแก้ไข (ผูกกับ Knowledge Base) ----------
+function requestClose(id) {
+  const t = tickets.find(x => x.id === id);
+  if (!t || t.status === STATUS.CLOSED) return;   // ปิดไปแล้ว ไม่ต้องถามซ้ำ
+  pendingCloseId = id;
+  $('closeResolution').value = '';
+  $('closeModal').classList.remove('hidden');
+  $('closeResolution').focus();
+}
+function cancelClose() {
+  $('closeModal').classList.add('hidden');
+  pendingCloseId = null;
+}
+function finishClose(resolutionText) {
+  const id = pendingCloseId;
+  $('closeModal').classList.add('hidden');
+  pendingCloseId = null;
+  if (id == null) return;
+  moveTicket(id, STATUS.CLOSED, resolutionText);
+}
 
 /* =============================================================================
    Dashboard — คำนวณทุกอย่างฝั่ง client จาก tickets ชุดเดียวกับบอร์ด
@@ -358,8 +406,10 @@ function renderDashboard() {
   $('slaCloseNote').innerText  = closeGaps.length  ? `จาก ${closeGaps.length} ตั๋ว`  : 'ยังไม่มีตั๋วที่ปิดงาน';
 
   const now = Date.now();
-  const aging = open.filter(t => { const c = parseT(t.createdAt); return c && (now - c) > 3 * DAY_MS; });
+  // agingDays ตั้งค่าได้ที่หน้า Settings (ค่าเริ่มต้น 3 วัน) — เก็บใน localStorage ต่อเบราว์เซอร์
+  const aging = open.filter(t => { const c = parseT(t.createdAt); return c && (now - c) > agingDays * DAY_MS; });
   $('slaAging').innerText = aging.length;
+  $('slaAgingLabel').innerText = `🔥 ค้างเกิน ${agingDays} วัน (ยังไม่รับ)`;
 
   // ---- หมวดหมู่ / พื้นที่ / เจ้าหน้าที่ ----
   const cats = countBy(all, t => t.category || 'ไม่ระบุ');
@@ -388,7 +438,7 @@ function renderDashboard() {
   agingBody.innerHTML = oldest.length ? '' : `<tr><td colspan="4" class="py-3 text-xs" style="color:var(--ink-muted)">ไม่มีตั๋วค้าง 🎉</td></tr>`;
   oldest.forEach(t => {
     const days = (now - parseT(t.createdAt)) / DAY_MS;
-    const hot = days > 3;
+    const hot = days > agingDays;
     const tr = document.createElement('tr');
     tr.className = 'border-t';
     tr.style.borderColor = 'var(--grid)';
@@ -675,6 +725,143 @@ async function changeRole(userId, newRole) {
 }
 
 /* =============================================================================
+   Knowledge Base — บทความถูกสร้างอัตโนมัติตอนปิดงานพร้อมกรอกวิธีแก้ไข (ดู moveTicket)
+   ============================================================================= */
+
+const MOCK_KB = [
+  { id:1, ticketId:118, ticketCode:'TK-118', category:'เครือข่าย', detail:'เปลี่ยนสาย LAN ใหม่', resolution:'สาย LAN เส้นเดิมชำรุดจากการงอพับ เปลี่ยนเป็นสาย Cat6 เส้นใหม่และทดสอบความเร็วผ่าน speedtest ภายในแล้วปกติ', author:'สมคิด ไอที', createdAt:hrsAgo(24) },
+  { id:2, ticketId:119, ticketCode:'TK-119', category:'ซอฟต์แวร์', detail:'อีเมลส่งออกไม่ได้', resolution:'พบว่ากล่องขาออกเต็มโควตา (quota) ให้ลบไฟล์แนบเก่าที่ไม่ใช้แล้วและตั้งค่าเลี่ยงแนบไฟล์ใหญ่ผ่านอีเมลโดยตรง', author:'วิชัย ไอที', createdAt:hrsAgo(50) },
+  { id:3, ticketId:115, ticketCode:'TK-115', category:'ฮาร์ดแวร์', detail:'ตั้งค่าแชร์ปริ้นเตอร์', resolution:'ติดตั้งไดรเวอร์ปริ้นเตอร์รุ่นที่ตรงกับ Windows 11 ใหม่ แล้วแชร์ผ่านเครื่อง server กลางแทนเครื่องเดิมที่ปิดเครื่องบ่อย', author:'วิชัย ไอที', createdAt:hrsAgo(26) },
+];
+
+function normalizeKb(a) {
+  return {
+    id: a.id,
+    ticketId: a.ticketId,
+    ticketCode: a.ticketCode || ('TK-' + a.ticketId),
+    category: cleanCategory(a.category || '') || 'ไม่ระบุ',
+    detail: a.detail || '',
+    resolution: a.resolution || '',
+    pdfUrl: a.pdfUrl || '',
+    author: a.author || 'ไม่ทราบผู้บันทึก',
+    createdAt: a.createdAt || null,
+  };
+}
+
+async function loadKB() {
+  try {
+    const res = await callBackend('getKnowledgeBase', {});
+    if (res && res.status === 'success' && Array.isArray(res.articles)) {
+      kbArticles = res.articles.map(normalizeKb);
+      usingMockKb = false;
+    } else { throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend'); }
+  } catch (e) {
+    kbArticles = MOCK_KB.map(normalizeKb);
+    usingMockKb = true;
+  }
+  kbLoaded = true;
+  renderKB();
+}
+
+function renderKB() {
+  $('kbMockBanner').classList.toggle('hidden', !usingMockKb);
+
+  // ชิพหมวดหมู่ — สร้างจากหมวดหมู่ที่ปรากฏจริงในบทความ ไม่ hardcode
+  const cats = ['all', ...new Set(kbArticles.map(a => a.category))];
+  $('kbCatChips').innerHTML = cats.map(c => {
+    const label = c === 'all' ? 'ทั้งหมด' : c;
+    const active = kbCatFilter === c;
+    return `<button data-cat="${escapeHtml(c)}" class="px-2.5 py-1 rounded-full border transition-colors ${
+      active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+    }">${escapeHtml(label)}</button>`;
+  }).join('');
+  $('kbCatChips').querySelectorAll('button').forEach(b =>
+    b.addEventListener('click', () => { kbCatFilter = b.dataset.cat; renderKB(); }));
+
+  const q = kbSearch.trim().toLowerCase();
+  const list = kbArticles
+    .filter(a => kbCatFilter === 'all' || a.category === kbCatFilter)
+    .filter(a => !q || [a.detail, a.resolution, a.ticketCode].some(s => String(s).toLowerCase().includes(q)))
+    .sort((a, b) => (parseT(b.createdAt) || 0) - (parseT(a.createdAt) || 0));
+
+  const box = $('kbList');
+  box.innerHTML = '';
+  $('kbEmpty').classList.toggle('hidden', kbArticles.length > 0);
+
+  list.forEach(a => {
+    const el = document.createElement('div');
+    el.className = 'border rounded-lg p-3.5';
+    el.style.borderColor = 'var(--grid)';
+    el.innerHTML = `
+      <div class="flex items-start justify-between gap-2 mb-1.5">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-bold text-sm" style="color:var(--ink)">${escapeHtml(a.ticketCode)}</span>
+          <span class="text-[11px] px-2 py-0.5 rounded-full ${catColor(a.category)}">${escapeHtml(a.category)}</span>
+        </div>
+        ${a.pdfUrl ? `<button data-pdf="${a.id}" class="text-xs text-blue-600 hover:underline whitespace-nowrap">📄 เอกสารต้นฉบับ</button>` : ''}
+      </div>
+      ${a.detail ? `<div class="text-xs mb-1.5" style="color:var(--ink-muted)">อาการ: ${escapeHtml(a.detail)}</div>` : ''}
+      <p class="text-sm leading-relaxed whitespace-pre-wrap" style="color:var(--ink-2)">${escapeHtml(a.resolution)}</p>
+      <div class="text-[11px] mt-2" style="color:var(--ink-muted)">บันทึกโดย ${escapeHtml(a.author)} · ${timeAgo(a.createdAt)}</div>
+    `;
+    const pdfBtn = el.querySelector('[data-pdf]');
+    if (pdfBtn) pdfBtn.addEventListener('click', () => openPdf({ code:a.ticketCode, pdfUrl:a.pdfUrl }));
+    box.appendChild(el);
+  });
+}
+
+/* =============================================================================
+   Settings — บัญชีของฉัน + ค่าตั้งต้นของแดชบอร์ด (เก็บใน localStorage ล้วนๆ)
+   ============================================================================= */
+
+function renderSettings() {
+  // บัญชีของฉัน: ใช้ role จาก users ถ้าโหลดแล้ว ไม่งั้นโชว์แค่ชื่อ/userId ที่มีจาก LIFF
+  const me = users.find(u => u.userId === currentStaffId);
+  const box = $('settingsAccountBox');
+  if (!currentStaffId) {
+    box.innerHTML = `
+      <div class="text-sm" style="color:var(--ink-2)">ยังไม่ได้เข้าสู่ระบบ LINE</div>
+      <button id="settingsLoginBtn" class="mt-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">เข้าสู่ระบบ LINE</button>
+    `;
+    $('settingsLoginBtn').addEventListener('click', ensureLogin);
+    return;
+  }
+  box.innerHTML = `
+    <div class="flex items-center gap-3">
+      <span class="w-10 h-10 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center shrink-0">${escapeHtml(currentStaff.trim().charAt(0) || '?')}</span>
+      <div class="min-w-0">
+        <div class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(currentStaff || '-')}</div>
+        <div class="text-[11px] truncate" style="color:var(--ink-muted)">${escapeHtml(currentStaffId)}</div>
+      </div>
+      ${me ? roleBadge(me.role) : ''}
+    </div>
+    <button id="settingsLogoutBtn" class="mt-3 px-3 py-1.5 rounded-lg text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50">ออกจากระบบ</button>
+  `;
+  $('settingsLogoutBtn').addEventListener('click', doLogout);
+}
+
+function doLogout() {
+  if (!confirm('ออกจากระบบ LINE บนเบราว์เซอร์นี้?')) return;
+  localStorage.removeItem('ft_staff');
+  localStorage.removeItem('ft_staff_id');
+  try { if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()) liff.logout(); } catch (e) { /* ไม่ต้องบล็อกถ้า logout ฝั่ง LIFF พัง */ }
+  location.reload();
+}
+
+function initSettingsForm() {
+  $('agingDaysInput').value = agingDays;
+  $('agingDaysInput').addEventListener('change', () => {
+    const v = Math.max(1, Math.min(30, parseInt($('agingDaysInput').value, 10) || 3));
+    agingDays = v;
+    $('agingDaysInput').value = v;
+    localStorage.setItem('ft_aging_days', String(v));
+    $('agingSavedNote').classList.remove('hidden');
+    setTimeout(() => $('agingSavedNote').classList.add('hidden'), 1500);
+    if (currentView === 'dashboard' || !$('viewDashboard').classList.contains('hidden')) renderDashboard();
+  });
+}
+
+/* =============================================================================
    View switching + Init
    ============================================================================= */
 
@@ -683,30 +870,49 @@ function switchView(v) {
   currentView = v;
   $('viewBoard').classList.toggle('hidden', v !== 'board');
   $('viewDashboard').classList.toggle('hidden', v !== 'dashboard');
+  $('viewKB').classList.toggle('hidden', v !== 'kb');
   $('viewUsers').classList.toggle('hidden', v !== 'users');
+  $('viewSettings').classList.toggle('hidden', v !== 'settings');
   $('viewTitle').innerText = VIEWS[v].title;
   $('viewSubtitle').innerText = VIEWS[v].sub;
   document.querySelectorAll('.nav-item').forEach(a => a.classList.toggle('active', a.dataset.view === v));
   localStorage.setItem('ft_view', v);
   if (v === 'dashboard') renderDashboard();  // วาดใหม่ตอนแสดงเสมอ ให้ตัวเลข/ขนาด svg สดล่าสุด
-  if (v === 'users') { usersLoaded ? renderUsers() : loadUsers(); }   // โหลดครั้งแรกตอนเข้าหน้า
+  if (v === 'kb')        { kbLoaded    ? renderKB()    : loadKB(); }     // โหลดครั้งแรกตอนเข้าหน้า
+  if (v === 'users')     { usersLoaded ? renderUsers() : loadUsers(); }  // โหลดครั้งแรกตอนเข้าหน้า
+  if (v === 'settings')  renderSettings();
 }
 
 // ---------- Events ----------
 document.querySelectorAll('.nav-item').forEach(a =>
   a.addEventListener('click', () => switchView(a.dataset.view)));
 $('staffBtn').addEventListener('click', () => { if (!currentStaffId) ensureLogin(); });
-// โหลดใหม่ตาม view ที่เปิดอยู่ (users แยกชุดข้อมูลจากตั๋ว)
-$('refreshBtn').addEventListener('click', () => currentView === 'users' ? loadUsers() : loadTickets());
+// โหลดใหม่ตาม view ที่เปิดอยู่ (users/kb แยกชุดข้อมูลจากตั๋ว)
+$('refreshBtn').addEventListener('click', () => {
+  if (currentView === 'users') return loadUsers();
+  if (currentView === 'kb')    return loadKB();
+  loadTickets();
+});
 $('pdfClose').addEventListener('click', closePdf);
 $('pdfModal').addEventListener('click', (e) => { if (e.target === $('pdfModal')) closePdf(); });
 $('userSearch').addEventListener('input', (e) => { userSearch = e.target.value; renderUsers(); });
-document.querySelectorAll('[data-soon]').forEach(a =>
-  a.addEventListener('click', () => alert('โมดูลนี้อยู่ในเฟสถัดไป — ตอนนี้เปิด Dashboard, Task Board และ Users')));
+$('kbSearchInput').addEventListener('input', (e) => { kbSearch = e.target.value; renderKB(); });
+$('closeCancelBtn').addEventListener('click', cancelClose);
+$('closeSkipBtn').addEventListener('click', () => finishClose(''));
+$('closeConfirmBtn').addEventListener('click', () => finishClose($('closeResolution').value.trim()));
+$('closeModal').addEventListener('click', (e) => { if (e.target === $('closeModal')) cancelClose(); });
 
 // ---------- Init ----------
+// ถ้า currentView เป็น view ที่ผลลัพธ์ขึ้นกับตัวตน (settings แสดงบัญชี, users มีปุ่มแก้บทบาท)
+// ต้องวาดใหม่หลัง LIFF login resolve เสร็จ ไม่งั้นค้างสถานะ "ยังไม่ login" ทั้งที่ล็อกอินแล้ว
+function refreshIdentityDependentViews() {
+  if (currentView === 'settings') renderSettings();
+  if (currentView === 'users' && usersLoaded) renderUsers();
+}
+
 async function init() {
   setStaffUI();
+  initSettingsForm();
   switchView(localStorage.getItem('ft_view') || 'board');   // จำ view ล่าสุดที่เปิดไว้
   // ระบุตัวจาก LINE — ใช้ LIFF app ตัวที่ 2 (ADMIN_LIFF_ID, endpoint = admin.html)
   // ถ้ายังไม่ได้ตั้ง จะ fallback เป็น MY_LIFF_ID (เปิด URL ตรงบนเดสก์ท็อปก็ใช้ได้)
@@ -724,12 +930,14 @@ async function init() {
       localStorage.setItem('ft_staff', currentStaff);
       localStorage.setItem('ft_staff_id', currentStaffId);
       setStaffUI();
+      refreshIdentityDependentViews();
     }
   } catch (e) {
     // login พังไม่ควรทำให้ดูบอร์ดไม่ได้ — ยังดูได้ แต่กดรับงานจะโดนเตือนให้ login ก่อน
     console.warn('LINE login ไม่สำเร็จ:', e);
     currentStaffId = '';
     setStaffUI();
+    refreshIdentityDependentViews();
   }
   loadTickets();
 }

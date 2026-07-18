@@ -3,12 +3,14 @@
    -----------------------------------------------------------------------------
    วิธีติดตั้ง:
      1) copy โค้ดทั้งไฟล์นี้ไปวางในไฟล์ AdminApi.gs ของโปรเจกต์ GAS (แทนของเดิมทั้งไฟล์)
-     2) router (handlers map) ใน doPost ของ Code.gs ต้องมีครบ 5 บรรทัดนี้:
+     2) router (handlers map) ใน doPost ของ Code.gs ต้องมีครบ 7 บรรทัดนี้:
           getTickets: getTickets,
           acceptTicket: acceptTicket,
           updateTicketStatus: updateTicketStatus,
-          getUsers: getUsers,                    // <-- ใหม่ (โมดูล Users)
-          updateUserRole: updateUserRole         // <-- ใหม่ (โมดูล Users)
+          getUsers: getUsers,                          // โมดูล Users
+          updateUserRole: updateUserRole,              // โมดูล Users
+          getKnowledgeBase: getKnowledgeBase,           // <-- ใหม่ (โมดูล Knowledge Base)
+          addKnowledgeArticle: addKnowledgeArticle      // <-- ใหม่ (โมดูล Knowledge Base)
      3) Deploy → Manage deployments → ✏️ → Version: "New version" → Deploy
         *** ต้องเป็น New version ของ deployment เดิม URL ถึงจะไม่เปลี่ยน ***
 
@@ -28,6 +30,13 @@
              branch, province, reported, assigned } ] }
      updateUserRole({ userId, role })           // role รับได้ทั้งพิมพ์เล็ก/ใหญ่: admin/it/staff
        -> { status:'success', role:'<ค่าที่บันทึกจริงใน DB>' }
+     getKnowledgeBase({})
+       -> { status:'success', articles:[ { id, ticketId, ticketCode, category,
+             detail, resolution, pdfUrl, author, createdAt } ] }
+     addKnowledgeArticle({ ticketId, resolutionText, createdBy })
+       -> { status:'success', id:<KB_ID ที่สร้าง> }
+       Category_ID ดึงจาก TICKET ของ ticketId นั้นโดยตรง (ไม่รับจาก client) กัน
+       หมวดหมู่เพี้ยนถ้า client ส่งมาไม่ตรงกับตั๋วจริง · createdBy ว่างได้ (เขียน NULL)
 
    Status: 1 = รอรับเรื่อง (Open) · 2 = กำลังดำเนินการ (In Progress) · 3 = เสร็จสิ้น (Closed)
 
@@ -277,5 +286,77 @@ function updateUserRole(data) {
 
     if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบผู้ใช้คนนี้ในระบบ' };
     return { status: 'success', role: dbRole };
+  });
+}
+
+// ==========================================
+// 11. รายการบทความในฐานความรู้ (โมดูล Knowledge Base)
+// ==========================================
+function getKnowledgeBase(data) {
+  return withConn_(function (conn) {
+    const sql = `
+      SELECT
+        kb."KB_ID", kb."Ticket_ID", kb."Resolution_Text", kb."Created_Date", kb."Created_By",
+        c."Category_Name", t."Issue_Detail", t."Doc_PDF_URL",
+        u."Full_Name" AS "Author_Name"
+      FROM "KNOWLEDGE_BASE" kb
+      LEFT JOIN "ISSUE_CATEGORY" c ON c."Category_ID"  = kb."Category_ID"
+      LEFT JOIN "TICKET"        t  ON t."Ticket_ID"    = kb."Ticket_ID"
+      LEFT JOIN "USER"          u  ON u."LINE_User_ID" = kb."Created_By"
+      ORDER BY kb."Created_Date" DESC
+    `;
+    const rs = conn.prepareStatement(sql).executeQuery();
+
+    const articles = [];
+    while (rs.next()) {
+      const ticketId = rs.getInt('Ticket_ID');
+      articles.push({
+        id: rs.getInt('KB_ID'),
+        ticketId: ticketId,
+        ticketCode: 'TK-' + ticketId,
+        category: strOrNull_(rs, 'Category_Name') || '',
+        detail: strOrNull_(rs, 'Issue_Detail') || '',
+        resolution: strOrNull_(rs, 'Resolution_Text') || '',
+        pdfUrl: strOrNull_(rs, 'Doc_PDF_URL') || '',
+        author: strOrNull_(rs, 'Author_Name') || '-',
+        createdAt: toIsoLocal_(rs, 'Created_Date')
+      });
+    }
+    return { status: 'success', articles: articles };
+  });
+}
+
+// ==========================================
+// 12. เพิ่มบทความ (เรียกอัตโนมัติตอนปิดงานพร้อมกรอกวิธีแก้ไข)
+// -----------------------------------------------------------------------------
+// ⚠️ ไม่เคยตรวจ schema จริงของ KNOWLEDGE_BASE.Created_By ว่ามี CHECK/FK คล้าย
+//    USER.Role หรือไม่ (บทเรียนจาก USER_Role_check ที่เพิ่งเจอ) — ก่อน deploy
+//    ควรรันเช็คคอนสเตรนต์ก่อนสักครั้ง:
+//      SELECT conname, pg_get_constraintdef(oid) FROM pg_constraint
+//      WHERE conrelid = '"KNOWLEDGE_BASE"'::regclass;
+//    ถ้า Created_By เป็น FK ไป USER.LINE_User_ID (ตามแพตเทิร์นเดียวกับ IT_In_Charge)
+//    โค้ดนี้ก็ใช้ได้เลยเพราะ createdBy ที่ส่งมาคือ currentStaffId (LINE userId) อยู่แล้ว
+// ==========================================
+function addKnowledgeArticle(data) {
+  return withConn_(function (conn) {
+    const ticketId = parseInt(data && data.ticketId, 10);
+    const resolutionText = String((data && data.resolutionText) || '').trim();
+    const createdBy = String((data && data.createdBy) || '').trim();
+    if (!ticketId)       return { status: 'error', message: 'ไม่ได้ระบุ ticketId' };
+    if (!resolutionText) return { status: 'error', message: 'ไม่ได้ระบุวิธีแก้ไขปัญหา' };
+
+    // ดึง Category_ID จากตัวตั๋วโดยตรง ไม่รับจาก client กันหมวดหมู่เพี้ยน
+    const stmt = conn.prepareStatement(`
+      INSERT INTO "KNOWLEDGE_BASE" ("Ticket_ID", "Category_ID", "Resolution_Text", "Created_Date", "Created_By")
+      SELECT ?, "Category_ID", ?, NOW(), ?
+      FROM "TICKET" WHERE "Ticket_ID" = ?
+    `);
+    stmt.setInt(1, ticketId);
+    stmt.setString(2, resolutionText);
+    if (createdBy) stmt.setString(3, createdBy); else stmt.setNull(3, Jdbc.Types.VARCHAR);
+    stmt.setInt(4, ticketId);
+
+    if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบตั๋ว TK-' + ticketId };
+    return { status: 'success' };
   });
 }
