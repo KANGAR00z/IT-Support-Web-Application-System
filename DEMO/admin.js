@@ -29,6 +29,19 @@ const COLUMNS = [
 const VIEWS = {
   dashboard: { title:'แดชบอร์ด (Dashboard)', sub:'ภาพรวมงานแจ้งซ่อม · คำนวณจากตั๋วทั้งหมด' },
   board:     { title:'ตารางงาน IT Support (Task Board)', sub:'จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ' },
+  users:     { title:'ผู้ใช้งาน (Users)', sub:'จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด' },
+};
+
+// บทบาทผู้ใช้ — DB มีค่าเก่าปนอยู่ ('Staff' ตัวใหญ่จาก createTicket) จึง normalize
+// แบบ case-insensitive ผ่าน roleOf(): รู้จักแค่ admin/it ที่เหลือถือเป็นผู้ใช้ทั่วไปหมด
+const ROLES = {
+  admin: { label:'แอดมิน',         badge:'bg-violet-100 text-violet-700' },
+  it:    { label:'เจ้าหน้าที่ IT', badge:'bg-blue-100 text-blue-700' },
+  staff: { label:'ผู้ใช้งานทั่วไป', badge:'bg-slate-100 text-slate-600' },
+};
+const roleOf = (r) => {
+  const x = String(r || '').trim().toLowerCase();
+  return (x === 'admin' || x === 'it') ? x : 'staff';
 };
 
 const SEQ = ['--seq-1','--seq-2','--seq-3','--seq-4'];   // ramp 4 ขั้นของแผนที่ (0 ตั๋วใช้ --seq-0)
@@ -46,6 +59,13 @@ const cssVar = (n) => getComputedStyle(document.body).getPropertyValue(n).trim()
 // ---------- สถานะของหน้า ----------
 let tickets = [];
 let usingMock = false;
+let currentView = 'board';
+// โมดูล Users — โหลดแบบ lazy ตอนเข้าหน้า ไม่ดึงพร้อมตั๋ว
+let users = [];
+let usingMockUsers = false;
+let usersLoaded = false;
+let userSearch = '';
+let userRoleFilter = 'all';
 // ตัวตนเจ้าหน้าที่มาจาก LINE login เท่านั้น (เหตุผลดู contract ด้านบน)
 let currentStaff   = localStorage.getItem('ft_staff') || '';      // ชื่อสำหรับแสดงผล
 let currentStaffId = localStorage.getItem('ft_staff_id') || '';   // LINE userId ที่ส่งให้ backend
@@ -503,29 +523,186 @@ function renderMap(all) {
 }
 
 /* =============================================================================
+   Users — จัดการบัญชีผู้ใช้และบทบาท (แอดมิน / เจ้าหน้าที่ IT / ผู้ใช้งานทั่วไป)
+   ============================================================================= */
+
+const MOCK_USERS = [
+  { userId:'Umock-admin-001', name:'นายสองพัน แซ่ชั่น', position:'เจ้าหน้าที่ไอที', role:'admin', dept:'ส่วนเทคโนโลยีสารสนเทศ', branch:'สำนักงานสรรพสามิตภาคที่ 9', province:'สงขลา', reported:2, assigned:5 },
+  { userId:'Umock-it-002', name:'วิชัย ไอที', position:'นักวิชาการคอมพิวเตอร์', role:'it', dept:'ส่วนเทคโนโลยีสารสนเทศ', branch:'สำนักงานสรรพสามิตภาคที่ 9', province:'สงขลา', reported:0, assigned:4 },
+  { userId:'Umock-staff-003', name:'กัญญาภัทร ใจดี', position:'เจ้าหน้าที่ธุรการ', role:'Staff', dept:'ส่วนอำนวยการ', branch:'สาขาเมืองสงขลา', province:'สงขลา', reported:3, assigned:0 },
+  { userId:'Umock-staff-004', name:'นพดล รักงาน', position:'นักตรวจสอบภาษี', role:'Staff', dept:'ส่วนบริหารจัดเก็บภาษี', branch:'สาขาหาดใหญ่', province:'สงขลา', reported:1, assigned:0 },
+  { userId:'Umock-staff-005', name:'นูรีดา สาและ', position:'เจ้าหน้าที่ทั่วไป', role:'Staff', dept:'ส่วนอำนวยการ', branch:'สาขาเมืองปัตตานี', province:'ปัตตานี', reported:1, assigned:0 },
+];
+
+function normalizeUser(u) {
+  return {
+    userId: u.userId || '',
+    name: u.name || '(ไม่มีชื่อ)',
+    position: u.position || '-',
+    role: roleOf(u.role),
+    dept: u.dept || '',
+    branch: u.branch || '',
+    province: u.province || '',
+    reported: Number(u.reported) || 0,
+    assigned: Number(u.assigned) || 0,
+  };
+}
+
+async function loadUsers() {
+  try {
+    const res = await callBackend('getUsers', {});
+    if (res && res.status === 'success' && Array.isArray(res.users)) {
+      users = res.users.map(normalizeUser);
+      usingMockUsers = false;
+    } else { throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend'); }
+  } catch (e) {
+    users = MOCK_USERS.map(normalizeUser);
+    usingMockUsers = true;
+  }
+  usersLoaded = true;
+  renderUsers();
+}
+
+// สิทธิ์แก้บทบาท: เฉพาะบัญชีที่ login แล้วและมี role=admin ใน DB
+// (โหมด mock เปิดให้ลองกดได้ เพราะไม่บันทึกจริงอยู่แล้ว)
+// ⚠️ นี่คือ gate ระดับ UI เท่านั้น — backend ยังไม่มี auth (finding เฟส 0 ที่ค้างอยู่)
+function canEditRoles() {
+  if (usingMockUsers) return true;
+  const me = users.find(u => u.userId === currentStaffId);
+  return !!me && me.role === 'admin';
+}
+
+function roleBadge(role) {
+  const r = ROLES[role] || ROLES.staff;
+  return `<span class="text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${r.badge}">${r.label}</span>`;
+}
+
+function renderUsers() {
+  // KPI
+  const counts = { admin:0, it:0, staff:0 };
+  users.forEach(u => counts[u.role]++);
+  $('usrTotal').innerText = users.length;
+  $('usrAdmin').innerText = counts.admin;
+  $('usrIt').innerText = counts.it;
+  $('usrStaff').innerText = counts.staff;
+  $('usersMockBanner').classList.toggle('hidden', !usingMockUsers);
+
+  // role filter chips
+  const chips = [['all','ทั้งหมด'], ['admin',ROLES.admin.label], ['it',ROLES.it.label], ['staff',ROLES.staff.label]];
+  $('roleChips').innerHTML = chips.map(([k, label]) =>
+    `<button data-role="${k}" class="px-2.5 py-1 rounded-full border transition-colors ${
+      userRoleFilter === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+    }">${label}</button>`).join('');
+  $('roleChips').querySelectorAll('button').forEach(b =>
+    b.addEventListener('click', () => { userRoleFilter = b.dataset.role; renderUsers(); }));
+
+  // filter + sort (แอดมินขึ้นก่อน แล้ว IT แล้วทั่วไป, ในกลุ่มเรียงตามชื่อ)
+  const q = userSearch.trim().toLowerCase();
+  const weight = { admin:0, it:1, staff:2 };
+  const list = users
+    .filter(u => userRoleFilter === 'all' || u.role === userRoleFilter)
+    .filter(u => !q || [u.name, u.position, u.branch, u.dept].some(s => String(s).toLowerCase().includes(q)))
+    .sort((a, b) => (weight[a.role] - weight[b.role]) || a.name.localeCompare(b.name, 'th'));
+
+  const editable = canEditRoles();
+  $('usersEditNote').classList.toggle('hidden', editable || !currentStaffId);
+
+  const body = $('usersBody');
+  body.innerHTML = '';
+  $('usersEmpty').classList.toggle('hidden', list.length > 0);
+
+  list.forEach(u => {
+    const isMe = !!currentStaffId && u.userId === currentStaffId;
+    const tr = document.createElement('tr');
+    tr.className = 'border-t';
+    tr.style.borderColor = 'var(--grid)';
+    tr.innerHTML = `
+      <td class="py-2.5 pr-3">
+        <div class="flex items-center gap-2.5">
+          <span class="w-8 h-8 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0">${escapeHtml(u.name.trim().charAt(0) || '?')}</span>
+          <div class="min-w-0">
+            <div class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(u.name)}${isMe ? ' <span class="text-[10px] font-normal text-blue-600">(คุณ)</span>' : ''}</div>
+            <div class="text-[10px] truncate" style="color:var(--ink-muted)">${escapeHtml(u.userId)}</div>
+          </div>
+        </div>
+      </td>
+      <td class="py-2.5 pr-3 text-xs" style="color:var(--ink-2)">${escapeHtml(u.position)}</td>
+      <td class="py-2.5 pr-3 text-xs" style="color:var(--ink-2)">
+        <div class="truncate max-w-[16rem]">${escapeHtml(u.branch || '-')}</div>
+        <div class="text-[10px] truncate max-w-[16rem]" style="color:var(--ink-muted)">${escapeHtml(u.dept || '')}</div>
+      </td>
+      <td class="py-2.5 pr-3">${roleBadge(u.role)}</td>
+      <td class="py-2.5 pr-3 text-right tabular-nums text-xs" style="color:var(--ink-2)">${u.reported}</td>
+      <td class="py-2.5 pr-3 text-right tabular-nums text-xs" style="color:var(--ink-2)">${u.assigned}</td>
+      <td class="py-2.5 pl-3 text-right">${
+        editable
+          ? `<select data-uid="${escapeHtml(u.userId)}" class="role-select border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500">
+               ${Object.entries(ROLES).map(([k, r]) => `<option value="${k}" ${k === u.role ? 'selected' : ''}>${r.label}</option>`).join('')}
+             </select>`
+          : `<span class="text-[10px]" style="color:var(--ink-muted)">—</span>`
+      }</td>`;
+    body.appendChild(tr);
+  });
+
+  body.querySelectorAll('.role-select').forEach(sel =>
+    sel.addEventListener('change', () => changeRole(sel.dataset.uid, sel.value)));
+}
+
+async function changeRole(userId, newRole) {
+  const u = users.find(x => x.userId === userId);
+  if (!u || u.role === newRole) return;
+
+  const isSelfDemote = userId === currentStaffId && newRole !== 'admin';
+  const msg = isSelfDemote
+    ? `⚠️ กำลังลดสิทธิ์ "บัญชีของคุณเอง" เป็น ${ROLES[newRole].label} — จะแก้บทบาทใครไม่ได้อีกจนกว่าแอดมินคนอื่นจะคืนสิทธิ์ให้\n\nยืนยันหรือไม่?`
+    : `เปลี่ยนบทบาทของ "${u.name}" เป็น ${ROLES[newRole].label}?`;
+  if (!confirm(msg)) { renderUsers(); return; }   // วาดใหม่ให้ select เด้งกลับค่าเดิม
+
+  const prevRole = u.role;
+  u.role = newRole;         // optimistic
+  renderUsers();
+
+  if (usingMockUsers) return;   // โหมดตัวอย่าง: ไม่ยิง backend
+
+  try {
+    const res = await callBackend('updateUserRole', { userId, role: newRole });
+    if (!res || res.status !== 'success') throw new Error((res && res.message) || 'อัปเดตไม่สำเร็จ');
+  } catch (e) {
+    u.role = prevRole;      // revert
+    renderUsers();
+    alert('❌ เปลี่ยนบทบาทไม่สำเร็จ: ' + e.message);
+  }
+}
+
+/* =============================================================================
    View switching + Init
    ============================================================================= */
 
 function switchView(v) {
   if (!VIEWS[v]) v = 'board';   // กันค่าเพี้ยนใน localStorage (เช่นจากเวอร์ชันอนาคต) ทำหน้า crash
+  currentView = v;
   $('viewBoard').classList.toggle('hidden', v !== 'board');
   $('viewDashboard').classList.toggle('hidden', v !== 'dashboard');
+  $('viewUsers').classList.toggle('hidden', v !== 'users');
   $('viewTitle').innerText = VIEWS[v].title;
   $('viewSubtitle').innerText = VIEWS[v].sub;
   document.querySelectorAll('.nav-item').forEach(a => a.classList.toggle('active', a.dataset.view === v));
   localStorage.setItem('ft_view', v);
   if (v === 'dashboard') renderDashboard();  // วาดใหม่ตอนแสดงเสมอ ให้ตัวเลข/ขนาด svg สดล่าสุด
+  if (v === 'users') { usersLoaded ? renderUsers() : loadUsers(); }   // โหลดครั้งแรกตอนเข้าหน้า
 }
 
 // ---------- Events ----------
 document.querySelectorAll('.nav-item').forEach(a =>
   a.addEventListener('click', () => switchView(a.dataset.view)));
 $('staffBtn').addEventListener('click', () => { if (!currentStaffId) ensureLogin(); });
-$('refreshBtn').addEventListener('click', loadTickets);
+// โหลดใหม่ตาม view ที่เปิดอยู่ (users แยกชุดข้อมูลจากตั๋ว)
+$('refreshBtn').addEventListener('click', () => currentView === 'users' ? loadUsers() : loadTickets());
 $('pdfClose').addEventListener('click', closePdf);
 $('pdfModal').addEventListener('click', (e) => { if (e.target === $('pdfModal')) closePdf(); });
+$('userSearch').addEventListener('input', (e) => { userSearch = e.target.value; renderUsers(); });
 document.querySelectorAll('[data-soon]').forEach(a =>
-  a.addEventListener('click', () => alert('โมดูลนี้อยู่ในเฟสถัดไป — ตอนนี้เปิด Dashboard และ IT Task Board')));
+  a.addEventListener('click', () => alert('โมดูลนี้อยู่ในเฟสถัดไป — ตอนนี้เปิด Dashboard, Task Board และ Users')));
 
 // ---------- Init ----------
 async function init() {

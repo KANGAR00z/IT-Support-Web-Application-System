@@ -91,12 +91,12 @@
           <span>🗂️</span> ตารางงาน IT (Task Board)</a>
         <a data-soon class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer text-sm font-medium mt-1">
           <span>📚</span> ฐานความรู้ (Knowledge Base)</a>
-        <a data-soon class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer text-sm font-medium mt-1">
+        <a data-view="users" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-sm mt-1">
           <span>👥</span> ผู้ใช้งาน (Users)</a>
         <a data-soon class="flex items-center gap-3 px-3 py-2.5 rounded-lg text-slate-600 hover:bg-slate-100 cursor-pointer text-sm font-medium mt-1">
           <span>⚙️</span> ตั้งค่า (Settings)</a>
       </nav>
-      <div class="p-3 border-t border-slate-100 text-[11px] text-slate-400">Phase 2 · Dashboard + Task Board</div>
+      <div class="p-3 border-t border-slate-100 text-[11px] text-slate-400">Phase 3 · Dashboard + Task Board + Users</div>
     </aside>
 
     <!-- ================= Main ================= -->
@@ -241,6 +241,76 @@
                 <tbody id="agingBody"></tbody>
               </table>
             </div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- ================= View: Users ================= -->
+      <div id="viewUsers" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
+
+        <!-- แถบเตือนโหมดตัวอย่างของโมดูลนี้ (backend ยังไม่มี getUsers / เรียกไม่สำเร็จ) -->
+        <div id="usersMockBanner" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2 rounded-lg flex items-center gap-2">
+          <span>⚠️</span>
+          <span><b>โหมดตัวอย่าง</b> — เรียก getUsers ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง · การเปลี่ยนบทบาทจะยังไม่บันทึกจริง</span>
+        </div>
+
+        <!-- KPI row -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="viz-card">
+            <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--ink-muted)"></span>ผู้ใช้ทั้งหมด</div>
+            <div class="viz-hero" id="usrTotal">0</div>
+            <div class="viz-kpi-sub">All users</div>
+          </div>
+          <div class="viz-card">
+            <div class="viz-kpi-label"><span class="viz-dot" style="background:#7c3aed"></span>แอดมิน</div>
+            <div class="viz-kpi-value" id="usrAdmin">0</div>
+            <div class="viz-kpi-sub">Admin</div>
+          </div>
+          <div class="viz-card">
+            <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--st-prog)"></span>เจ้าหน้าที่ IT</div>
+            <div class="viz-kpi-value" id="usrIt">0</div>
+            <div class="viz-kpi-sub">IT Staff</div>
+          </div>
+          <div class="viz-card">
+            <div class="viz-kpi-label"><span class="viz-dot" style="background:#94a3b8"></span>ผู้ใช้งานทั่วไป</div>
+            <div class="viz-kpi-value" id="usrStaff">0</div>
+            <div class="viz-kpi-sub">General users</div>
+          </div>
+        </div>
+
+        <!-- ตารางผู้ใช้ -->
+        <div class="viz-card">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <div class="viz-title">บัญชีผู้ใช้งาน</div>
+              <div class="viz-sub">จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด</div>
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <input id="userSearch" type="text" placeholder="ค้นหาชื่อ / ตำแหน่ง / สาขา..."
+                     class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-56">
+              <div id="roleChips" class="flex items-center gap-1.5 text-xs"></div>
+            </div>
+          </div>
+          <div class="overflow-x-auto mt-3">
+            <table class="w-full text-sm">
+              <thead>
+                <tr class="text-left text-[11px] uppercase tracking-wider" style="color:var(--ink-muted)">
+                  <th class="py-2 pr-3 font-semibold">ผู้ใช้</th>
+                  <th class="py-2 pr-3 font-semibold">ตำแหน่ง</th>
+                  <th class="py-2 pr-3 font-semibold">สังกัด</th>
+                  <th class="py-2 pr-3 font-semibold">บทบาท</th>
+                  <th class="py-2 pr-3 font-semibold text-right">แจ้งซ่อม</th>
+                  <th class="py-2 pr-3 font-semibold text-right">รับผิดชอบ</th>
+                  <th class="py-2 pl-3 font-semibold text-right">เปลี่ยนบทบาท</th>
+                </tr>
+              </thead>
+              <tbody id="usersBody"></tbody>
+            </table>
+            <div id="usersEmpty" class="hidden py-6 text-center text-xs" style="color:var(--ink-muted)">ไม่พบผู้ใช้ที่ตรงกับเงื่อนไข</div>
+          </div>
+          <div id="usersEditNote" class="hidden mt-2 text-[11px]" style="color:var(--ink-muted)">
+            🔒 การเปลี่ยนบทบาทเปิดเฉพาะบัญชีที่มีสิทธิ์แอดมิน — บัญชีของคุณยังไม่ใช่แอดมิน
           </div>
         </div>
 

@@ -3,10 +3,12 @@
    -----------------------------------------------------------------------------
    วิธีติดตั้ง:
      1) copy โค้ดทั้งไฟล์นี้ไปวางในไฟล์ AdminApi.gs ของโปรเจกต์ GAS (แทนของเดิมทั้งไฟล์)
-     2) router ใน doPost ต้องมี 3 บรรทัดนี้อยู่แล้ว (ถ้าเคยเพิ่มแล้วไม่ต้องแก้อีก):
+     2) router (handlers map) ใน doPost ของ Code.gs ต้องมีครบ 5 บรรทัดนี้:
           getTickets: getTickets,
           acceptTicket: acceptTicket,
-          updateTicketStatus: updateTicketStatus
+          updateTicketStatus: updateTicketStatus,
+          getUsers: getUsers,                    // <-- ใหม่ (โมดูล Users)
+          updateUserRole: updateUserRole         // <-- ใหม่ (โมดูล Users)
      3) Deploy → Manage deployments → ✏️ → Version: "New version" → Deploy
         *** ต้องเป็น New version ของ deployment เดิม URL ถึงจะไม่เปลี่ยน ***
 
@@ -21,8 +23,15 @@
           USER.LINE_User_ID (constraint fk_ticket_it) — ส่ง "ชื่อ" มา DB จะปฏิเสธ
      updateTicketStatus({ ticketId, status })   // status 1/2/3
        -> { status:'success' }
+     getUsers({})
+       -> { status:'success', users:[ { userId, name, position, role, dept,
+             branch, province, reported, assigned } ] }
+     updateUserRole({ userId, role })           // role: 'admin' | 'it' | 'staff'
+       -> { status:'success', role:'<ค่าที่บันทึก>' }
 
    Status: 1 = รอรับเรื่อง (Open) · 2 = กำลังดำเนินการ (In Progress) · 3 = เสร็จสิ้น (Closed)
+   Role:   admin = แอดมิน · it = เจ้าหน้าที่ IT · อื่นๆ/Staff = ผู้ใช้งานทั่วไป
+           (ข้อมูลเก่ามี 'Staff' ตัวใหญ่จาก createTicket — frontend เทียบแบบ case-insensitive)
    ============================================================================= */
 
 const TICKET_STATUS = { OPEN: 1, IN_PROGRESS: 2, CLOSED: 3 };
@@ -193,5 +202,68 @@ function updateTicketStatus(data) {
 
     if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบตั๋ว TK-' + ticketId };
     return { status: 'success', message: 'อัปเดตสถานะ TK-' + ticketId + ' เป็น ' + status };
+  });
+}
+
+// ==========================================
+// 9. รายชื่อผู้ใช้ทั้งหมด (โมดูล Users)
+// ==========================================
+function getUsers(data) {
+  return withConn_(function (conn) {
+    // JOIN TICKET สองขา (ผู้แจ้ง / ผู้รับผิดชอบ) — สองขาคูณกันเป็น cartesian ต่อ user
+    // จึงต้องนับแบบ COUNT(DISTINCT id) ไม่งั้นตัวเลขบวม
+    const sql = `
+      SELECT
+        u."LINE_User_ID", u."Full_Name", u."Position", u."Role",
+        d."Dept_Name", b."Branch_Name", b."Province",
+        COUNT(DISTINCT t."Ticket_ID")  AS "Reported",
+        COUNT(DISTINCT ta."Ticket_ID") AS "Assigned"
+      FROM "USER" u
+      LEFT JOIN "DEPARTMENT" d ON d."Dept_ID"       = u."Dept_ID"
+      LEFT JOIN "BRANCH"     b ON b."Branch_ID"     = d."Branch_ID"
+      LEFT JOIN "TICKET"     t ON t."LINE_User_ID"  = u."LINE_User_ID"
+      LEFT JOIN "TICKET"    ta ON ta."IT_In_Charge" = u."LINE_User_ID"
+      GROUP BY u."LINE_User_ID", u."Full_Name", u."Position", u."Role",
+               d."Dept_Name", b."Branch_Name", b."Province"
+      ORDER BY u."Full_Name"
+    `;
+    const rs = conn.prepareStatement(sql).executeQuery();
+
+    const users = [];
+    while (rs.next()) {
+      users.push({
+        userId: rs.getString('LINE_User_ID'),
+        name: strOrNull_(rs, 'Full_Name') || '(ไม่มีชื่อ)',
+        position: strOrNull_(rs, 'Position') || '-',
+        role: strOrNull_(rs, 'Role') || 'staff',
+        dept: strOrNull_(rs, 'Dept_Name') || '',
+        branch: strOrNull_(rs, 'Branch_Name') || '',
+        province: strOrNull_(rs, 'Province') || '',
+        reported: rs.getInt('Reported'),
+        assigned: rs.getInt('Assigned')
+      });
+    }
+    return { status: 'success', users: users };
+  });
+}
+
+// ==========================================
+// 10. เปลี่ยนบทบาทผู้ใช้ (โมดูล Users)
+// ==========================================
+function updateUserRole(data) {
+  return withConn_(function (conn) {
+    const userId = String((data && data.userId) || '').trim();
+    const role = String((data && data.role) || '').trim().toLowerCase();
+    if (!userId) return { status: 'error', message: 'ไม่ได้ระบุ userId' };
+    if (['admin', 'it', 'staff'].indexOf(role) === -1) {
+      return { status: 'error', message: 'บทบาทไม่ถูกต้อง: ' + role + ' (ต้องเป็น admin / it / staff)' };
+    }
+
+    const stmt = conn.prepareStatement('UPDATE "USER" SET "Role" = ? WHERE "LINE_User_ID" = ?');
+    stmt.setString(1, role);
+    stmt.setString(2, userId);
+
+    if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบผู้ใช้คนนี้ในระบบ' };
+    return { status: 'success', role: role };
   });
 }
