@@ -10,6 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
   <script src="config.js"></script>
+  <script src="common.js"></script>
 
   <style>
     body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; }
@@ -212,8 +213,8 @@
   </div>
 
   <script>
-    // ---------- Helpers ----------
-    const $ = (id) => document.getElementById(id);
+    // Helpers กลาง ($ , stripEmoji, cleanCategory, ftCallBackend ฯลฯ) อยู่ใน common.js
+    // ห้ามประกาศชื่อซ้ำในไฟล์นี้ — const ระดับบนสุดแชร์ scope ข้าม <script>
 
     // ---------- State ----------
     let currentTicketPayload = null;   // payload สำหรับ createTicket (เก็บ docPdfUrl ที่สร้างแล้ว)
@@ -292,30 +293,11 @@
     }
 
     // ---------- Backend ----------
-    async function callBackend(actionName, payloadData) {
-      logDebug("Sending payload to " + actionName);
-      const response = await fetch(GAS_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({ action: actionName, data: payloadData })
-      });
-      return await response.json();
-    }
+    // ตัวจริงอยู่ใน common.js (ftCallBackend) — ห่อเพื่อส่ง logDebug เข้า debug panel
+    const callBackend = (actionName, payloadData) => ftCallBackend(actionName, payloadData, logDebug);
 
     // ---------- Form data collectors ----------
-    // ข้อมูลแบบ label (ข้อความ) สำหรับสร้างเอกสาร PDF
-    // ลบ emoji ออกจากข้อความ (เอกสารราชการห้ามมี emoji)
-    function stripEmoji(s) {
-      return String(s)
-        .replace(/[\u{1F000}-\u{1FAFF}\u{2600}-\u{27BF}\u{2190}-\u{21FF}\u{2B00}-\u{2BFF}\u{FE00}-\u{FE0F}\u{200D}]/gu, '')
-        .replace(/\s+/g, ' ')
-        .trim();
-    }
-
-    // ทำความสะอาดหมวดหมู่: ตัด emoji + วงเล็บภาษาอังกฤษ เช่น "💻 ฮาร์ดแวร์ (Hardware)" -> "ฮาร์ดแวร์"
-    function cleanCategory(s) {
-      return stripEmoji(s).replace(/\s*\([A-Za-z\s]+\)\s*/g, '').trim();
-    }
+    // stripEmoji / cleanCategory (เอกสารราชการห้ามมี emoji) อยู่ใน common.js
 
     // ชื่อเต็มทางการของสาขา: ประกอบจาก optgroup (พื้นที่) + ข้อความ option
     // เช่น optgroup "5. พื้นที่ยะลา" + "สาขาเบตง" -> "สำนักงานสรรพสามิตพื้นที่ยะลา สาขาเบตง"

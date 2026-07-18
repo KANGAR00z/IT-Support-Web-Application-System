@@ -2,32 +2,47 @@
    FAST TICKET · Admin API handlers (getTickets / acceptTicket / updateTicketStatus)
    -----------------------------------------------------------------------------
    วิธีติดตั้ง:
-     1) copy โค้ดทั้งไฟล์นี้ไปต่อท้าย Code.gs ในโปรเจกต์ GAS
-     2) แก้ router ใน doPost ให้เพิ่ม 3 บรรทัด (ดู ROUTER PATCH ด้านล่าง)
+     1) copy โค้ดทั้งไฟล์นี้ไปวางในไฟล์ AdminApi.gs ของโปรเจกต์ GAS (แทนของเดิมทั้งไฟล์)
+     2) router ใน doPost ต้องมี 3 บรรทัดนี้อยู่แล้ว (ถ้าเคยเพิ่มแล้วไม่ต้องแก้อีก):
+          getTickets: getTickets,
+          acceptTicket: acceptTicket,
+          updateTicketStatus: updateTicketStatus
      3) Deploy → Manage deployments → ✏️ → Version: "New version" → Deploy
         *** ต้องเป็น New version ของ deployment เดิม URL ถึงจะไม่เปลี่ยน ***
 
-   ROUTER PATCH — ใน doPost แก้ handlers เป็น:
-     const handlers = {
-       generateDocument: generateDocument,
-       createTicket: createTicket,
-       deleteTempPdf: deleteTempPdf,
-       getTickets: getTickets,                    // <-- เพิ่ม
-       acceptTicket: acceptTicket,                // <-- เพิ่ม
-       updateTicketStatus: updateTicketStatus     // <-- เพิ่ม
-     };
-
-   สัญญา API (ต้องตรงกับที่ admin.html รอ):
+   สัญญา API (ต้องตรงกับ admin.js):
      getTickets({})
-       -> { status:'success', tickets:[ { id, code, detail, category, branch, province,
-             reporter, assignee, status, createdAt, acceptedAt, closedAt, pdfUrl } ] }
-     acceptTicket({ ticketId, staff })      -> { status:'success' }
-     updateTicketStatus({ ticketId, status })-> { status:'success' }
+       -> { status:'success', tickets:[ { id, code, detail, category, branch,
+             province, reporter, assignee, status, createdAt, acceptedAt,
+             closedAt, pdfUrl } ] }
+     acceptTicket({ ticketId, staffUserId })
+       -> { status:'success', assignee:'<USER.Full_Name>' }
+       ⚠️ staffUserId = LINE userId เพราะ TICKET.IT_In_Charge เป็น FK ->
+          USER.LINE_User_ID (constraint fk_ticket_it) — ส่ง "ชื่อ" มา DB จะปฏิเสธ
+     updateTicketStatus({ ticketId, status })   // status 1/2/3
+       -> { status:'success' }
 
    Status: 1 = รอรับเรื่อง (Open) · 2 = กำลังดำเนินการ (In Progress) · 3 = เสร็จสิ้น (Closed)
    ============================================================================= */
 
 const TICKET_STATUS = { OPEN: 1, IN_PROGRESS: 2, CLOSED: 3 };
+
+// -----------------------------------------------------------------------------
+// helper: เปิด connection -> เรียก fn -> ปิดเสมอ + แปลง exception เป็น error response
+// ตามสเปก JDBC การปิด Connection จะปิด Statement/ResultSet ที่เปิดจากมันทั้งหมด
+// จึงไม่ต้องปิด stmt/rs รายตัวในแต่ละ handler
+// -----------------------------------------------------------------------------
+function withConn_(fn) {
+  let conn = null;
+  try {
+    conn = getDbConnection();   // นิยามใน Code.gs
+    return fn(conn);
+  } catch (error) {
+    return { status: 'error', message: error.toString() };
+  } finally {
+    if (conn) conn.close();
+  }
+}
 
 // -----------------------------------------------------------------------------
 // helper: แปลงค่าเวลาจาก DB ให้เป็น ISO 8601 ที่ JS parse ได้ทุกเบราว์เซอร์
@@ -39,7 +54,7 @@ const TICKET_STATUS = { OPEN: 1, IN_PROGRESS: 2, CLOSED: 3 };
 // (โปรเจกต์นี้เคยเจอปัญหา iOS มาแล้ว จึงต้อง normalize ให้ถูกสเปกเสมอ)
 //
 // รับได้ทั้ง timestamptz ("…+00", "…+0700") และ timestamp ธรรมดา ("…15:30:00.0")
-// คืน null ถ้าไม่มีค่า -> admin.html จัดการ null ได้อยู่แล้ว
+// คืน null ถ้าไม่มีค่า -> admin.js จัดการ null ได้อยู่แล้ว
 // -----------------------------------------------------------------------------
 function toIsoLocal_(rs, col) {
   const raw = rs.getString(col);
@@ -62,13 +77,10 @@ function strOrNull_(rs, col) {
 // 6. ดึงตั๋วทั้งหมดสำหรับ Task Board / Dashboard
 // ==========================================
 function getTickets(data) {
-  let conn = null, stmt = null, rs = null;
-  try {
-    conn = getDbConnection();
-
+  return withConn_(function (conn) {
     // LEFT JOIN เพื่อไม่ให้ตั๋วหายถ้า master data ขาด (เช่นยังไม่มี record ใน USER)
-    // JOIN "USER" 2 ครั้ง: u = ผู้แจ้ง (LINE_User_ID) · it = เจ้าหน้าที่ผู้รับงาน (IT_In_Charge)
-    // เพราะ IT_In_Charge เก็บเป็น LINE_User_ID (FK) ต้องแปลงกลับเป็นชื่อให้หน้าเว็บโชว์
+    // JOIN "USER" 2 ครั้ง: u = ผู้แจ้ง (LINE_User_ID) · it = เจ้าหน้าที่ (IT_In_Charge
+    // เก็บเป็น LINE_User_ID เพราะเป็น FK ต้องแปลงกลับเป็นชื่อให้หน้าเว็บโชว์)
     const sql = `
       SELECT
         t."Ticket_ID", t."Issue_Detail", t."Status", t."IT_In_Charge", t."Doc_PDF_URL",
@@ -83,8 +95,7 @@ function getTickets(data) {
       LEFT JOIN "USER"           it ON it."LINE_User_ID" = t."IT_In_Charge"
       ORDER BY t."Ticket_ID" DESC
     `;
-    stmt = conn.prepareStatement(sql);
-    rs = stmt.executeQuery();
+    const rs = conn.prepareStatement(sql).executeQuery();
 
     const tickets = [];
     while (rs.next()) {
@@ -106,38 +117,25 @@ function getTickets(data) {
         pdfUrl: strOrNull_(rs, 'Doc_PDF_URL') || ''
       });
     }
-
     return { status: 'success', tickets: tickets };
-  } catch (error) {
-    return { status: 'error', message: error.toString() };
-  } finally {
-    if (rs) rs.close();
-    if (stmt) stmt.close();
-    if (conn) conn.close();
-  }
+  });
 }
 
 // ==========================================
 // 7. รับงาน (Open -> In Progress) + บันทึกเจ้าหน้าที่ผู้รับ
-// -----------------------------------------------------------------------------
-// ⚠️ IT_In_Charge เป็น FK (constraint fk_ticket_it) ชี้ USER."LINE_User_ID"
-//    ต้องส่ง "LINE userId" มา ไม่ใช่ชื่อคน ไม่งั้น DB ปฏิเสธด้วย FK violation
 // ==========================================
 function acceptTicket(data) {
-  let conn = null, stmtChk = null, rsChk = null, stmt = null;
-  try {
+  return withConn_(function (conn) {
     const ticketId = parseInt(data && data.ticketId, 10);
     // รองรับ staffUserId (ชื่อใหม่) และ staff (ชื่อเดิม) เผื่อ frontend เวอร์ชันเก่ายังค้าง cache
     const staffUserId = String((data && (data.staffUserId || data.staff)) || '').trim();
     if (!ticketId)    return { status: 'error', message: 'ไม่ได้ระบุ ticketId' };
     if (!staffUserId) return { status: 'error', message: 'ไม่ได้ระบุผู้รับงาน (ต้องเข้าสู่ระบบ LINE ก่อน)' };
 
-    conn = getDbConnection();
-
     // เช็คตัวตนก่อน เพื่อคืน error ที่มนุษย์อ่านรู้เรื่อง แทน FK violation ดิบๆ จาก Postgres
-    stmtChk = conn.prepareStatement('SELECT "Full_Name" FROM "USER" WHERE "LINE_User_ID" = ?');
+    const stmtChk = conn.prepareStatement('SELECT "Full_Name" FROM "USER" WHERE "LINE_User_ID" = ?');
     stmtChk.setString(1, staffUserId);
-    rsChk = stmtChk.executeQuery();
+    const rsChk = stmtChk.executeQuery();
     if (!rsChk.next()) {
       return {
         status: 'error',
@@ -146,52 +144,39 @@ function acceptTicket(data) {
     }
     const staffName = rsChk.getString('Full_Name');
 
-    const sql = `
+    const stmt = conn.prepareStatement(`
       UPDATE "TICKET"
       SET "Status" = ?, "IT_In_Charge" = ?, "Accepted_Date" = NOW(), "Closed_Date" = NULL
       WHERE "Ticket_ID" = ?
-    `;
-    stmt = conn.prepareStatement(sql);
+    `);
     stmt.setInt(1, TICKET_STATUS.IN_PROGRESS);
     stmt.setString(2, staffUserId);
     stmt.setInt(3, ticketId);
 
-    const rows = stmt.executeUpdate();
-    if (rows === 0) return { status: 'error', message: 'ไม่พบตั๋ว TK-' + ticketId };
-
+    if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบตั๋ว TK-' + ticketId };
     return { status: 'success', message: 'รับงาน TK-' + ticketId + ' โดย ' + staffName, assignee: staffName };
-  } catch (error) {
-    return { status: 'error', message: error.toString() };
-  } finally {
-    if (rsChk) rsChk.close();
-    if (stmtChk) stmtChk.close();
-    if (stmt) stmt.close();
-    if (conn) conn.close();
-  }
+  });
 }
 
 // ==========================================
 // 8. เปลี่ยนสถานะตั๋ว (ลากการ์ด / ปิดงาน / เปิดใหม่)
 // ==========================================
 function updateTicketStatus(data) {
-  let conn = null, stmt = null;
-  try {
+  return withConn_(function (conn) {
     const ticketId = parseInt(data && data.ticketId, 10);
     const status = parseInt(data && data.status, 10);
     if (!ticketId) return { status: 'error', message: 'ไม่ได้ระบุ ticketId' };
     if ([1, 2, 3].indexOf(status) === -1) {
-      return { status: 'error', message: 'สถานะไม่ถูกต้อง: ' + data.status };
+      return { status: 'error', message: 'สถานะไม่ถูกต้อง: ' + (data && data.status) };
     }
 
-    conn = getDbConnection();
-
-    // แต่ละสถานะจัดการคอลัมน์เวลา/ผู้รับงานต่างกัน ให้ตรงกับที่ admin.html อัปเดตฝั่งหน้าจอ
+    // แต่ละสถานะจัดการคอลัมน์เวลา/ผู้รับงานต่างกัน ให้ตรงกับที่ admin.js อัปเดตฝั่งหน้าจอ
     let sql;
     if (status === TICKET_STATUS.CLOSED) {
       // ปิดงาน: ประทับเวลาปิด
       sql = `UPDATE "TICKET" SET "Status" = ?, "Closed_Date" = NOW() WHERE "Ticket_ID" = ?`;
     } else if (status === TICKET_STATUS.OPEN) {
-      // เปิดใหม่: ล้างผู้รับงาน + เวลารับ/ปิด (ตรงกับ admin.html ที่ล้าง assignee เป็น null)
+      // เปิดใหม่: ล้างผู้รับงาน + เวลารับ/ปิด (ตรงกับ admin.js ที่ล้าง assignee เป็น null)
       sql = `UPDATE "TICKET"
              SET "Status" = ?, "IT_In_Charge" = NULL, "Accepted_Date" = NULL, "Closed_Date" = NULL
              WHERE "Ticket_ID" = ?`;
@@ -202,18 +187,11 @@ function updateTicketStatus(data) {
              WHERE "Ticket_ID" = ?`;
     }
 
-    stmt = conn.prepareStatement(sql);
+    const stmt = conn.prepareStatement(sql);
     stmt.setInt(1, status);
     stmt.setInt(2, ticketId);
 
-    const rows = stmt.executeUpdate();
-    if (rows === 0) return { status: 'error', message: 'ไม่พบตั๋ว TK-' + ticketId };
-
+    if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบตั๋ว TK-' + ticketId };
     return { status: 'success', message: 'อัปเดตสถานะ TK-' + ticketId + ' เป็น ' + status };
-  } catch (error) {
-    return { status: 'error', message: error.toString() };
-  } finally {
-    if (stmt) stmt.close();
-    if (conn) conn.close();
-  }
+  });
 }
