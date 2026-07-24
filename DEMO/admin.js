@@ -3,7 +3,7 @@
    -----------------------------------------------------------------------------
    ต้องโหลดหลัง: config.js, common.js, map-data.js
 
-   API contract (ฝั่ง GAS — ดู gas-admin-handlers.gs):
+   API contract (ฝั่ง GAS — ดู AdminApi.gs):
      getTickets({})
        -> { status:'success', tickets:[ { id, code, detail, category, branch,
             province, reporter, assignee, status, createdAt, acceptedAt,
