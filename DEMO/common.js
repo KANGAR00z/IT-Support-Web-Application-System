@@ -11,12 +11,18 @@ const $ = (id) => document.getElementById(id);
 // POST เป็น text/plain "โดยตั้งใจ" เพื่อให้เป็น CORS simple request — GAS ไม่ตอบ
 // preflight (OPTIONS) การเปลี่ยนเป็น application/json จะทำให้ทุก request พัง
 // log เป็น optional: index.html ส่ง logDebug เข้ามาเพื่อโชว์ใน debug panel
+//
+// 🔒 แนบ LIFF ID Token ทุก request — backend เอาไป verify กับ LINE เพื่อยืนยันตัวตน
+//    (JWT เซ็นลายเซ็นแล้ว ปลอมไม่ได้) จึง "ไม่ต้องส่ง userId จาก client" อีก backend
+//    รู้เองว่าใครยิงจาก token getIDToken() คืน null ถ้ายังไม่ init/login -> backend ปฏิเสธ
 async function ftCallBackend(action, data, log) {
   if (log) log('Sending payload to ' + action);
+  let idToken = null;
+  try { if (typeof liff !== 'undefined' && liff.getIDToken) idToken = liff.getIDToken(); } catch (e) { /* ยังไม่ login */ }
   const res = await fetch(GAS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, data: data || {} })
+    body: JSON.stringify({ action, idToken, data: data || {} })
   });
   if (!res.ok) throw new Error('เซิร์ฟเวอร์ตอบ HTTP ' + res.status);
   return await res.json();

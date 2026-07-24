@@ -262,7 +262,7 @@ async function moveTicket(id, toStatus, resolutionText) {
 
   try {
     const res = isAccept
-      ? await callBackend('acceptTicket', { ticketId:id, staffUserId:currentStaffId })
+      ? await callBackend('acceptTicket', { ticketId:id })   // backend รู้ผู้รับจาก idToken เอง
       : await callBackend('updateTicketStatus', { ticketId:id, status:toStatus });
     if (!res || res.status !== 'success') throw new Error(res && res.message || 'อัปเดตไม่สำเร็จ');
     // ชื่อบนการ์ดใช้ USER.Full_Name จาก DB (backend ส่งกลับมา) ไม่ใช่ชื่อ LINE
@@ -275,7 +275,7 @@ async function moveTicket(id, toStatus, resolutionText) {
     // การปิดงาน "ล้มเหลว" ถ้าขั้นนี้พังต่อ (คนละ resource กัน แค่แจ้งเตือนเบาๆ พอ)
     if (toStatus === STATUS.CLOSED && resolutionText) {
       try {
-        const kbRes = await callBackend('addKnowledgeArticle', { ticketId:id, resolutionText, createdBy:currentStaffId });
+        const kbRes = await callBackend('addKnowledgeArticle', { ticketId:id, resolutionText });   // ผู้บันทึกมาจาก idToken
         if (!kbRes || kbRes.status !== 'success') throw new Error((kbRes && kbRes.message) || 'ไม่ทราบสาเหตุ');
         kbLoaded = false;   // บังคับให้โหลดใหม่ครั้งถัดไปที่เข้าหน้า Knowledge Base
       } catch (kbErr) {

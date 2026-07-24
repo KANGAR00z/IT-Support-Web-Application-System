@@ -3,16 +3,20 @@
    -----------------------------------------------------------------------------
    วิธีติดตั้ง:
      1) copy โค้ดทั้งไฟล์นี้ไปวางในไฟล์ AdminApi.gs ของโปรเจกต์ GAS (แทนของเดิมทั้งไฟล์)
-     2) router (handlers map) ใน doPost ของ Code.gs ต้องมีครบ 7 บรรทัดนี้:
-          getTickets: getTickets,
-          acceptTicket: acceptTicket,
-          updateTicketStatus: updateTicketStatus,
-          getUsers: getUsers,                          // โมดูล Users
-          updateUserRole: updateUserRole,              // โมดูล Users
-          getKnowledgeBase: getKnowledgeBase,           // <-- ใหม่ (โมดูล Knowledge Base)
-          addKnowledgeArticle: addKnowledgeArticle      // <-- ใหม่ (โมดูล Knowledge Base)
-     3) Deploy → Manage deployments → ✏️ → Version: "New version" → Deploy
+     2) ตั้ง Script Property เพิ่ม 1 ตัว (Project Settings → Script properties):
+          LIFF_CHANNEL_ID = <Channel ID ของ LINE Login channel ที่ LIFF app อยู่>
+        เอามาจาก LINE Developers console → channel นั้น → Basic settings → Channel ID
+        (ตัวเลขล้วน) — ใช้ตรวจว่า idToken ที่ client ส่งมาเป็นของ channel เราจริง
+     3) ใน Code.gs แก้ 2 ฟังก์ชัน (ดูบล็อก AUTH ด้านล่างสำหรับโค้ดเต็ม):
+          - doPost:      เพิ่มชั้น authorize_() ก่อนเรียก handler + ส่ง auth เป็น arg ที่ 2
+          - createTicket: เปลี่ยน signature เป็น (data, auth) และใช้ auth.userId แทน
+                          data.lineUserId ทั้ง 2 จุด (ตัวตนผู้แจ้งมาจาก token ไม่ใช่ client)
+     4) Deploy → Manage deployments → ✏️ → Version: "New version" → Deploy
         *** ต้องเป็น New version ของ deployment เดิม URL ถึงจะไม่เปลี่ยน ***
+
+   🔒 AUTH: ทุก request ต้องแนบ idToken (LIFF ID Token) — backend verify กับ LINE แล้ว
+      เช็คสิทธิ์ตาม ACL ก่อนทำงานเสมอ ตัวตนผู้กระทำ (ผู้แจ้ง/ผู้รับงาน/ผู้บันทึก KB)
+      มาจาก auth.userId ที่ verify แล้ว "ไม่เชื่อค่าจาก client อีกต่อไป"
 
    สัญญา API (ต้องตรงกับ admin.js):
      getTickets({})
@@ -55,6 +59,121 @@ const TICKET_STATUS = { OPEN: 1, IN_PROGRESS: 2, CLOSED: 3 };
 // รับ key จาก frontend แบบตัวพิมพ์เล็ก (admin/it/staff) แล้ว map เป็นค่าที่ DB ยอมรับ
 // ก่อนเขียนทุกครั้ง — เขียนค่าอื่นที่ไม่ตรงนี้ Postgres จะ reject ด้วย error 23514
 const ROLE_DB_VALUE = { admin: 'Admin', it: 'IT', staff: 'Staff' };
+
+/* =============================================================================
+   AUTH — ยืนยันตัวตนด้วย LINE ID Token + เช็คสิทธิ์ตาม ACL
+   -----------------------------------------------------------------------------
+   ทำไม: config.js เป็น public repo -> ใครก็เห็น GAS URL แล้วยิง curl ตรงได้
+         การเช็คสิทธิ์ฝั่ง client (canEditRoles ฯลฯ) เป็นแค่ UX ปลอมกันไม่ได้
+   หลักการ: client แนบ LIFF ID Token (JWT ที่ LINE เซ็นลายเซ็น ปลอมไม่ได้) มาทุก
+            request -> backend ยิงถาม LINE ว่าของจริงไหม -> ได้ userId ตัวจริง ->
+            เทียบ USER.Role กับ ACL ว่า action นี้ role นี้ทำได้ไหม
+   ============================================================================= */
+
+// สิทธิ์ต่อ action — '*' = แค่ login (role อะไรก็ได้ รวมผู้ใช้ที่ยังไม่มีใน USER)
+// ค่า role ต้องตรงตัวพิมพ์กับ USER.Role ('Staff'/'IT'/'Admin')
+const ACL = {
+  generateDocument:    ['*'],            // พนักงานทั่วไปแจ้งซ่อมได้
+  createTicket:        ['*'],
+  deleteTempPdf:       ['*'],
+  getTickets:          ['IT', 'Admin'],  // งานเจ้าหน้าที่ IT
+  acceptTicket:        ['IT', 'Admin'],
+  updateTicketStatus:  ['IT', 'Admin'],
+  getKnowledgeBase:    ['IT', 'Admin'],
+  addKnowledgeArticle: ['IT', 'Admin'],
+  getUsers:            ['Admin'],         // จัดการสิทธิ์คนอื่น
+  updateUserRole:      ['Admin'],
+};
+
+// ยิงถาม LINE ว่า idToken ของจริงไหม — คืน { ok, userId }
+// LINE ตรวจลายเซ็น+อายุ+ผู้ออกให้เอง เราแค่เช็คซ้ำว่า aud = channel เราจริง
+function verifyIdToken_(idToken) {
+  if (!idToken) return { ok: false };
+  const channelId = PropertiesService.getScriptProperties().getProperty('LIFF_CHANNEL_ID');
+  if (!channelId) throw new Error('ยังไม่ได้ตั้ง Script Property: LIFF_CHANNEL_ID');
+
+  const res = UrlFetchApp.fetch('https://api.line.me/oauth2/v2.1/verify', {
+    method: 'post',
+    payload: { id_token: idToken, client_id: channelId },  // form-urlencoded อัตโนมัติ
+    muteHttpExceptions: true
+  });
+  if (res.getResponseCode() !== 200) return { ok: false };   // token ผิด/หมดอายุ/ผิด channel
+
+  const p = JSON.parse(res.getContentText());
+  if (String(p.aud) !== String(channelId)) return { ok: false };          // ของ channel เราจริง
+  if (p.exp && (Number(p.exp) * 1000) < Date.now()) return { ok: false };  // กันเหนียวเรื่องหมดอายุ
+  return { ok: true, userId: p.sub };   // sub = LINE userId ตัวจริง
+}
+
+// อ่าน role จาก DB — คืน 'Staff'/'IT'/'Admin' หรือ null (ไม่มีใน USER / DB ล่ม -> fail-closed)
+function getUserRole_(userId) {
+  const r = withConn_(function (conn) {
+    const stmt = conn.prepareStatement('SELECT "Role" FROM "USER" WHERE "LINE_User_ID" = ?');
+    stmt.setString(1, userId);
+    const rs = stmt.executeQuery();
+    return { role: rs.next() ? rs.getString('Role') : null };
+  });
+  return (r && typeof r.role !== 'undefined') ? r.role : null;  // ถ้า DB error withConn_ คืน {status:'error'} -> null
+}
+
+// ประตูหลัก: verify token + เช็ค ACL — คืน { ok, userId, role } หรือ { ok:false, message }
+function authorize_(action, idToken) {
+  const allowed = ACL[action];
+  if (!allowed) return { ok: false, message: 'ไม่พบคำสั่ง Action: ' + action };
+
+  const v = verifyIdToken_(idToken);
+  if (!v.ok) return { ok: false, message: 'ยืนยันตัวตน LINE ไม่สำเร็จ กรุณาเข้าสู่ระบบใหม่' };
+
+  if (allowed.indexOf('*') !== -1) return { ok: true, userId: v.userId, role: null };  // แค่ login พอ
+
+  const role = getUserRole_(v.userId);
+  if (allowed.indexOf(role) === -1) {
+    return { ok: false, message: 'บัญชีนี้ไม่มีสิทธิ์ทำรายการนี้ (' + (role || 'ไม่พบบัญชีในระบบ') + ')' };
+  }
+  return { ok: true, userId: v.userId, role: role };
+}
+
+/* -----------------------------------------------------------------------------
+   โค้ดที่ต้องวางใน Code.gs (มี getDbConnection/generateDocument/createTicket/deleteTempPdf)
+   -----------------------------------------------------------------------------
+   แทน doPost เดิมทั้งฟังก์ชันด้วยตัวนี้:
+
+     function doPost(e) {
+       try {
+         const request = JSON.parse(e.postData.contents);
+         const handlers = {
+           generateDocument: generateDocument,
+           createTicket: createTicket,
+           deleteTempPdf: deleteTempPdf,
+           getTickets: getTickets,
+           acceptTicket: acceptTicket,
+           updateTicketStatus: updateTicketStatus,
+           getUsers: getUsers,
+           updateUserRole: updateUserRole,
+           getKnowledgeBase: getKnowledgeBase,
+           addKnowledgeArticle: addKnowledgeArticle
+         };
+         const handler = handlers[request.action];
+         if (!handler) return jsonOutput({ status: 'error', message: 'ไม่พบคำสั่ง Action: ' + request.action });
+
+         const auth = authorize_(request.action, request.idToken);   // 🔒 ชั้นตรวจสิทธิ์
+         if (!auth.ok) return jsonOutput({ status: 'error', message: auth.message });
+
+         return jsonOutput(handler(request.data, auth));   // ส่ง auth เป็น arg ที่ 2
+       } catch (error) {
+         return jsonOutput({ status: 'error', message: error.toString() });
+       }
+     }
+
+   และแก้ createTicket 2 จุด (ตัวตนผู้แจ้งมาจาก token ไม่ใช่ client):
+     function createTicket(data, auth) {          // <- เพิ่ม , auth
+       const reporterId = auth && auth.userId;     // <- เพิ่มบรรทัดนี้
+       if (!reporterId) return { status: 'error', message: 'ยืนยันตัวตนไม่สำเร็จ' };
+       ...
+       stmtUser.setString(1, reporterId);          // <- เดิม data.lineUserId
+       ...
+       stmtTicket.setString(1, reporterId);        // <- เดิม data.lineUserId
+   ----------------------------------------------------------------------------- */
 
 // -----------------------------------------------------------------------------
 // helper: เปิด connection -> เรียก fn -> ปิดเสมอ + แปลง exception เป็น error response
@@ -153,13 +272,13 @@ function getTickets(data) {
 // ==========================================
 // 7. รับงาน (Open -> In Progress) + บันทึกเจ้าหน้าที่ผู้รับ
 // ==========================================
-function acceptTicket(data) {
+function acceptTicket(data, auth) {
   return withConn_(function (conn) {
     const ticketId = parseInt(data && data.ticketId, 10);
-    // รองรับ staffUserId (ชื่อใหม่) และ staff (ชื่อเดิม) เผื่อ frontend เวอร์ชันเก่ายังค้าง cache
-    const staffUserId = String((data && (data.staffUserId || data.staff)) || '').trim();
+    // ผู้รับงาน = ตัวตนที่ verify จาก idToken ไม่รับจาก client (กันสวมสิทธิ์รับงานแทนคนอื่น)
+    const staffUserId = auth && auth.userId;
     if (!ticketId)    return { status: 'error', message: 'ไม่ได้ระบุ ticketId' };
-    if (!staffUserId) return { status: 'error', message: 'ไม่ได้ระบุผู้รับงาน (ต้องเข้าสู่ระบบ LINE ก่อน)' };
+    if (!staffUserId) return { status: 'error', message: 'ยืนยันตัวตนไม่สำเร็จ' };
 
     // เช็คตัวตนก่อน เพื่อคืน error ที่มนุษย์อ่านรู้เรื่อง แทน FK violation ดิบๆ จาก Postgres
     const stmtChk = conn.prepareStatement('SELECT "Full_Name" FROM "USER" WHERE "LINE_User_ID" = ?');
@@ -270,19 +389,37 @@ function getUsers(data) {
 // ==========================================
 // 10. เปลี่ยนบทบาทผู้ใช้ (โมดูล Users)
 // ==========================================
-function updateUserRole(data) {
+function updateUserRole(data, auth) {
   return withConn_(function (conn) {
-    const userId = String((data && data.userId) || '').trim();
+    // userId ในนี้คือ "เป้าหมาย" ที่ถูกแก้ (คนละคนกับผู้กระทำ auth.userId ที่ ACL ยืนยันว่าเป็น Admin แล้ว)
+    const targetId = String((data && data.userId) || '').trim();
     const key = String((data && data.role) || '').trim().toLowerCase();
     const dbRole = ROLE_DB_VALUE[key];   // 'admin'->'Admin', 'it'->'IT', 'staff'->'Staff'
-    if (!userId) return { status: 'error', message: 'ไม่ได้ระบุ userId' };
+    if (!targetId) return { status: 'error', message: 'ไม่ได้ระบุ userId' };
     if (!dbRole) {
       return { status: 'error', message: 'บทบาทไม่ถูกต้อง: ' + key + ' (ต้องเป็น admin / it / staff)' };
     }
 
+    // อ่านบทบาทปัจจุบันของเป้าหมาย เพื่อเช็ค "แอดมินคนสุดท้าย" ก่อนลดสิทธิ์
+    const cur = conn.prepareStatement('SELECT "Role" FROM "USER" WHERE "LINE_User_ID" = ?');
+    cur.setString(1, targetId);
+    const rsCur = cur.executeQuery();
+    if (!rsCur.next()) return { status: 'error', message: 'ไม่พบผู้ใช้คนนี้ในระบบ' };
+    const currentRole = rsCur.getString('Role');
+
+    // กันแอดมินคนสุดท้ายหลุด: ถ้ากำลังลด Admin -> ไม่ใช่ Admin ต้องเหลือ Admin คนอื่น >= 1
+    // (ครอบทั้งการลดสิทธิ์ตัวเองและลดสิทธิ์แอดมินคนอื่น) ไม่งั้นจะไม่เหลือใครแก้ role ได้เลย
+    if (currentRole === 'Admin' && dbRole !== 'Admin') {
+      const cnt = conn.prepareStatement('SELECT COUNT(*) AS n FROM "USER" WHERE "Role" = \'Admin\'');
+      const rsN = cnt.executeQuery(); rsN.next();
+      if (rsN.getInt('n') <= 1) {
+        return { status: 'error', message: 'ต้องมีแอดมินอย่างน้อย 1 คนในระบบ — ตั้งคนอื่นเป็นแอดมินก่อนจึงจะลดสิทธิ์คนนี้ได้' };
+      }
+    }
+
     const stmt = conn.prepareStatement('UPDATE "USER" SET "Role" = ? WHERE "LINE_User_ID" = ?');
     stmt.setString(1, dbRole);   // ต้องเป็นค่าตาม USER_Role_check เป๊ะ ไม่งั้น Postgres ปฏิเสธ (23514)
-    stmt.setString(2, userId);
+    stmt.setString(2, targetId);
 
     if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบผู้ใช้คนนี้ในระบบ' };
     return { status: 'success', role: dbRole };
@@ -337,11 +474,11 @@ function getKnowledgeBase(data) {
 //    ถ้า Created_By เป็น FK ไป USER.LINE_User_ID (ตามแพตเทิร์นเดียวกับ IT_In_Charge)
 //    โค้ดนี้ก็ใช้ได้เลยเพราะ createdBy ที่ส่งมาคือ currentStaffId (LINE userId) อยู่แล้ว
 // ==========================================
-function addKnowledgeArticle(data) {
+function addKnowledgeArticle(data, auth) {
   return withConn_(function (conn) {
     const ticketId = parseInt(data && data.ticketId, 10);
     const resolutionText = String((data && data.resolutionText) || '').trim();
-    const createdBy = String((data && data.createdBy) || '').trim();
+    const createdBy = (auth && auth.userId) || '';   // ผู้บันทึก = ตัวตนที่ verify จาก idToken
     if (!ticketId)       return { status: 'error', message: 'ไม่ได้ระบุ ticketId' };
     if (!resolutionText) return { status: 'error', message: 'ไม่ได้ระบุวิธีแก้ไขปัญหา' };
 
