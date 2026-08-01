@@ -26,9 +26,16 @@ const COLUMNS = [
   { key:'CLOSED',      status:STATUS.CLOSED,      title:'เสร็จสิ้น',         en:'Closed',      dot:'bg-emerald-500',head:'text-emerald-600',body:'bg-emerald-50/40' },
 ];
 
+// จอสัมผัส: HTML5 drag & drop ไม่ทำงานบนมือถือเลย (dragstart ไม่ยิง)
+// จึงต้องเปลี่ยนทั้งข้อความบอกวิธีใช้ และปิด draggable ทิ้ง ไม่งั้น Android จะกดค้าง
+// แล้วเกิด ghost image ค้างจนเลื่อนบอร์ดไม่ได้ — ปุ่มบนการ์ดคือทางเปลี่ยนสถานะบนมือถือ
+const IS_TOUCH = window.matchMedia('(hover: none)').matches;
+
 const VIEWS = {
   dashboard: { title:'แดชบอร์ด (Dashboard)', sub:'ภาพรวมงานแจ้งซ่อม · คำนวณจากตั๋วทั้งหมด' },
-  board:     { title:'ตารางงาน IT Support (Task Board)', sub:'จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ' },
+  board:     { title:'ตารางงาน IT Support (Task Board)',
+               sub: IS_TOUCH ? 'ปัดซ้าย-ขวาเพื่อดูคอลัมน์อื่น · แตะปุ่มบนการ์ดเพื่อเปลี่ยนสถานะ'
+                             : 'จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ' },
   kb:        { title:'ฐานความรู้ (Knowledge Base)', sub:'รวมวิธีแก้ไขปัญหาจากตั๋วที่ปิดงานแล้ว' },
   users:     { title:'ผู้ใช้งาน (Users)', sub:'จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด' },
   settings:  { title:'ตั้งค่า (Settings)', sub:'บัญชีของฉันและค่าตั้งต้นของแดชบอร์ด' },
@@ -86,6 +93,18 @@ let currentStaffId = localStorage.getItem('ft_staff_id') || '';   // LINE userId
 
 const callBackend = (action, data) => ftCallBackend(action, data);
 
+// LIFF init เป็น async แต่ switchView() วาดหน้าทันทีและอาจสั่งโหลดข้อมูลเลย (ft_view = users/kb)
+// ถ้าไม่รอ liff.init() ให้เสร็จก่อน getIDToken() จะคืน null -> backend ปฏิเสธ -> ตกโหมดตัวอย่าง
+// ทั้งที่ login อยู่แท้ๆ · ทุก loadX() จึงต้อง await ตัวนี้ก่อนยิง backend
+let liffReady = Promise.resolve(true);
+
+// พิมพ์ "สาเหตุจริง" ลงแบนเนอร์ — ใน LINE in-app browser เปิด DevTools ไม่ได้
+// ถ้า catch กลืน error ทิ้งเงียบๆ จะ debug บนมือถือไม่ได้เลยว่าพังเพราะอะไร
+function setMockReason(elId, err) {
+  const el = $(elId);
+  if (el) el.innerText = err ? 'สาเหตุ: ' + err.message : '';
+}
+
 // ---------- ข้อมูลตัวอย่าง (fallback เมื่อเรียก backend ไม่สำเร็จ) ----------
 const MOCK_NOW = Date.now();
 const hrsAgo = (h) => new Date(MOCK_NOW - h * 3600e3).toISOString();
@@ -107,15 +126,18 @@ const MOCK = [
 // ---------- โหลดตั๋ว ----------
 async function loadTickets() {
   $('boardLoading')?.classList.remove('hidden');
+  await liffReady;   // ดูคอมเมนต์ที่ liffReady
   try {
     const res = await callBackend('getTickets', {});
     if (res && res.status === 'success' && Array.isArray(res.tickets)) {
       tickets = res.tickets.map(normalize);
       usingMock = false;
-    } else { throw new Error('ไม่มีข้อมูลจาก backend'); }
+    } else { throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend'); }
+    setMockReason('mockReason', null);
   } catch (e) {
     tickets = MOCK.map(normalize);
     usingMock = true;
+    setMockReason('mockReason', e);
   }
   $('mockBanner').classList.toggle('hidden', !usingMock);
   render();
@@ -150,16 +172,21 @@ function render() {
   for (const col of COLUMNS) {
     const items = tickets.filter(t => t.status === col.status);
     const colEl = document.createElement('div');
-    colEl.className = 'w-[320px] shrink-0 flex flex-col rounded-xl border border-slate-200 ' + col.body;
+    // มือถือ: กว้าง 86vw ให้เห็นคอลัมน์ถัดไปโผล่มานิดนึง = บอกใบ้ว่าปัดต่อได้
+    // (ถ้า fix 320px บนจอ 360px จะเต็มพอดีจนดูเหมือนไม่มีอะไรต่อ)
+    // max-w ต้องปลดที่ md ด้วย (md:max-w-none) ไม่งั้นมันคุมทับ w-[320px] บนเดสก์ท็อป
+    // ทำให้คอลัมน์กว้าง 340px แล้วบอร์ดเลื่อนแนวนอนทั้งที่จอกว้างพอ
+    // ขยายเป็น 360px เฉพาะ 2xl (1536px+) ซึ่งกว้างพอให้ 3 คอลัมน์อยู่ครบโดยไม่ต้องเลื่อน
+    colEl.className = 'board-col w-[86vw] max-w-[340px] md:max-w-none md:w-[320px] 2xl:w-[360px] shrink-0 flex flex-col rounded-xl border border-slate-200 ' + col.body;
     colEl.dataset.status = col.status;
 
     colEl.innerHTML = `
-      <div class="flex items-center justify-between px-4 py-3 shrink-0">
-        <div class="flex items-center gap-2 font-semibold ${col.head}">
-          <span class="w-2.5 h-2.5 rounded-full ${col.dot}"></span>${col.title}
-          <span class="text-slate-400 font-normal text-sm">(${col.en})</span>
+      <div class="flex items-center justify-between gap-2 px-3.5 md:px-4 py-3 shrink-0">
+        <div class="flex items-center gap-2 font-semibold min-w-0 ${col.head}">
+          <span class="w-2.5 h-2.5 rounded-full shrink-0 ${col.dot}"></span><span class="truncate">${col.title}</span>
+          <span class="text-slate-400 font-normal text-sm hidden sm:inline">(${col.en})</span>
         </div>
-        <span class="text-sm font-bold text-slate-400">${items.length}</span>
+        <span class="text-sm font-bold text-slate-400 shrink-0">${items.length}</span>
       </div>
       <div class="col-scroll flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-3" data-drop="${col.status}"></div>
     `;
@@ -184,24 +211,25 @@ function render() {
 
 function cardEl(t) {
   const el = document.createElement('div');
-  el.className = 'card-drag bg-white rounded-lg border border-slate-200 p-3.5 shadow-sm hover:shadow-md transition-shadow';
-  el.draggable = true;
+  el.className = (IS_TOUCH ? '' : 'card-drag ') + 'bg-white rounded-lg border border-slate-200 p-3.5 shadow-sm hover:shadow-md transition-shadow';
+  el.draggable = !IS_TOUCH;   // ดูเหตุผลที่ IS_TOUCH
   el.dataset.id = t.id;
 
   const timeLine = t.status === STATUS.CLOSED
     ? (t.closedAt ? `ปิดงาน: ${timeAgo(t.closedAt)}` : '')
     : (t.status === STATUS.IN_PROGRESS && t.acceptedAt ? `เริ่ม: ${timeAgo(t.acceptedAt)}` : `แจ้ง: ${timeAgo(t.createdAt)}`);
 
-  // ปุ่มตามคอลัมน์
+  // ปุ่มตามคอลัมน์ — บนมือถือปุ่มพวกนี้คือ "ทางเดียว" ที่เปลี่ยนสถานะได้ (ลากไม่ได้)
+  // จึงทำเป็นปุ่มมีพื้นหลัง + เป้ากดใหญ่ (.card-act) ไม่ใช่ตัวหนังสือเปล่าๆ
   let action = '';
   if (t.status === STATUS.OPEN) {
-    action = `<button data-act="accept" class="text-blue-600 hover:text-blue-800 font-semibold">รับงาน →</button>`;
+    action = `<button data-act="accept" class="card-act bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold">รับงาน →</button>`;
   } else if (t.status === STATUS.IN_PROGRESS) {
-    action = `<button data-act="close" class="text-emerald-600 hover:text-emerald-800 font-semibold">ปิดงาน ✓</button>`;
+    action = `<button data-act="close" class="card-act bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold">ปิดงาน ✓</button>`;
   } else {
     action = t.pdfUrl
-      ? `<button data-act="pdf" class="text-slate-600 hover:text-blue-700 font-medium inline-flex items-center gap-1">📄 ดูเอกสาร</button>`
-      : `<button data-act="reopen" class="text-slate-400 hover:text-slate-600 font-medium">↩ เปิดใหม่</button>`;
+      ? `<button data-act="pdf" class="card-act bg-slate-100 text-slate-600 hover:text-blue-700 font-medium inline-flex items-center gap-1">📄 ดูเอกสาร</button>`
+      : `<button data-act="reopen" class="card-act bg-slate-100 text-slate-500 hover:text-slate-700 font-medium">↩ เปิดใหม่</button>`;
   }
 
   el.innerHTML = `
@@ -210,9 +238,9 @@ function cardEl(t) {
       ${t.category ? `<span class="text-[11px] px-2 py-0.5 rounded-full ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}
     </div>
     <p class="text-sm text-slate-700 leading-snug mb-3">${escapeHtml(t.detail)}</p>
-    <div class="flex items-center justify-between text-xs text-slate-500 border-t border-slate-100 pt-2.5">
-      <span class="inline-flex items-center gap-1 truncate max-w-[55%]">
-        👤 ${escapeHtml(t.assignee || t.reporter)}
+    <div class="flex items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
+      <span class="inline-flex items-center gap-1 min-w-0">
+        <span class="shrink-0">👤</span><span class="truncate">${escapeHtml(t.assignee || t.reporter)}</span>
       </span>
       ${action}
     </div>
@@ -444,8 +472,8 @@ function renderDashboard() {
     tr.style.borderColor = 'var(--grid)';
     tr.innerHTML = `
       <td class="py-2 pr-3 font-bold whitespace-nowrap" style="color:var(--ink)">${escapeHtml(t.code)}</td>
-      <td class="py-2 pr-3 max-w-[22rem] truncate" style="color:var(--ink-2)">${escapeHtml(t.detail)}</td>
-      <td class="py-2 pr-3 text-xs whitespace-nowrap" style="color:var(--ink-muted)">${escapeHtml(normProv(t.province || t.branch) || '-')}</td>
+      <td class="py-2 pr-3 sm:max-w-[22rem] truncate" style="color:var(--ink-2)">${escapeHtml(t.detail)}</td>
+      <td class="py-2 pr-3 text-xs whitespace-nowrap hidden sm:table-cell" style="color:var(--ink-muted)">${escapeHtml(normProv(t.province || t.branch) || '-')}</td>
       <td class="py-2 pr-3 text-right whitespace-nowrap tabular-nums text-xs font-semibold"
           style="color:${hot ? 'var(--st-open)' : 'var(--ink-2)'}">${hot ? '🔥 ' : ''}${timeAgo(t.createdAt).replace('ที่แล้ว','').trim()}</td>`;
     agingBody.appendChild(tr);
@@ -465,7 +493,14 @@ function renderTrend(all) {
     const end = today.getTime() - i * DAY_MS, start = end - DAY_MS;
     buckets.push({ end, n: all.filter(t => { const c = parseT(t.createdAt); return c && c > start && c <= end; }).length });
   }
-  const W = 640, H = 170, L = 34, R = 8, T = 12, B = 26;
+  // ขนาด viewBox ต้องใกล้เคียงความกว้างจริงของ SVG (อัตราส่วน ~1:1)
+  // ไม่งั้น preserveAspectRatio จะย่อทั้งภาพ -> font-size 10 หน่วยเหลือ ~5px บนมือถือ
+  const cw = Math.round(svg.getBoundingClientRect().width) || 640;
+  const W = Math.max(320, Math.min(720, cw));
+  const H = cw < 480 ? 190 : 170;                 // จอแคบเพิ่มความสูงชดเชยพื้นที่กราฟที่หายไป
+  const L = cw < 480 ? 26 : 34, R = 8, T = 12, B = 26;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+  svg.style.height = H + 'px';
   const maxY = Math.max(1, ...buckets.map(b => b.n));
   const niceY = maxY <= 4 ? maxY : Math.ceil(maxY / 4) * 4;
   const px = (i) => L + i * (W - L - R) / (buckets.length - 1);
@@ -505,16 +540,28 @@ function renderTrend(all) {
 
   const tip = $('trendTip');
   svg.querySelectorAll('.trend-hit').forEach(r => {
-    r.addEventListener('mouseenter', () => {
-      const b = buckets[+r.dataset.i], d = new Date(b.end);
+    const show = () => {
+      const i = +r.dataset.i, b = buckets[i], d = new Date(b.end);
       tip.innerHTML = `${d.getDate()}/${d.getMonth() + 1} · <b>${b.n}</b> ตั๋ว`;
       tip.classList.remove('hidden');
       const box = svg.getBoundingClientRect();
-      tip.style.left = (box.width * (px(+r.dataset.i) / W)) + 'px';
+      // clamp: tip ใช้ translate(-50%) ถ้าจุดอยู่ริมสุดป้ายจะล้นออกนอกการ์ด
+      const x = box.width * (px(i) / W);
+      tip.style.left = Math.max(46, Math.min(box.width - 46, x)) + 'px';
       tip.style.top  = (box.height * (py(b.n) / H)) + 'px';
-    });
+    };
+    r.addEventListener('mouseenter', show);
     r.addEventListener('mouseleave', () => tip.classList.add('hidden'));
+    // จอสัมผัสไม่มี hover — ต้องแตะแล้วโชว์ แล้วซ่อนเองใน 2.5 วิ
+    r.addEventListener('click', () => { show(); scheduleTipHide(tip); });
   });
+}
+
+// ซ่อน tooltip อัตโนมัติหลังแตะบนจอสัมผัส (ไม่มี mouseleave ให้พึ่ง)
+let tipHideTimer = null;
+function scheduleTipHide(tip) {
+  clearTimeout(tipHideTimer);
+  tipHideTimer = setTimeout(() => tip.classList.add('hidden'), 2500);
 }
 
 // ---------- แผนที่: choropleth ขอบเขตจังหวัดจริง (ข้อมูลใน map-data.js) ----------
@@ -560,15 +607,19 @@ function renderMap(all) {
 
   const tip = $('mapTip');
   svg.querySelectorAll('.map-region').forEach(el => {
-    el.addEventListener('mousemove', (e) => {
+    const showAt = (clientX, clientY) => {
       const n = +el.dataset.n, pct = all.length ? Math.round(n / all.length * 100) : 0;
       tip.innerHTML = `${escapeHtml(el.dataset.prov)} · <b>${n}</b> ตั๋ว (${pct}%)`;
       tip.classList.remove('hidden');
       const box = svg.parentElement.getBoundingClientRect();
-      tip.style.left = (e.clientX - box.left) + 'px';
-      tip.style.top  = (e.clientY - box.top) + 'px';
-    });
+      // clamp เหมือนกราฟเส้น — จังหวัดริมซ้าย/ขวาไม่งั้นป้ายล้นการ์ด
+      tip.style.left = Math.max(60, Math.min(box.width - 60, clientX - box.left)) + 'px';
+      tip.style.top  = (clientY - box.top) + 'px';
+    };
+    el.addEventListener('mousemove', (e) => showAt(e.clientX, e.clientY));
     el.addEventListener('mouseleave', () => tip.classList.add('hidden'));
+    // จอสัมผัส: แตะจังหวัดแล้วโชว์ป้าย (ไม่มี hover ให้ใช้)
+    el.addEventListener('click', (e) => { showAt(e.clientX, e.clientY); scheduleTipHide(tip); });
   });
 }
 
@@ -599,15 +650,18 @@ function normalizeUser(u) {
 }
 
 async function loadUsers() {
+  await liffReady;   // ดูคอมเมนต์ที่ liffReady
   try {
     const res = await callBackend('getUsers', {});
     if (res && res.status === 'success' && Array.isArray(res.users)) {
       users = res.users.map(normalizeUser);
       usingMockUsers = false;
     } else { throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend'); }
+    setMockReason('usersMockReason', null);
   } catch (e) {
     users = MOCK_USERS.map(normalizeUser);
     usingMockUsers = true;
+    setMockReason('usersMockReason', e);
   }
   usersLoaded = true;
   renderUsers();
@@ -666,27 +720,32 @@ function renderUsers() {
     const tr = document.createElement('tr');
     tr.className = 'border-t';
     tr.style.borderColor = 'var(--grid)';
+    // จอเล็กซ่อนคอลัมน์ ตำแหน่ง/สังกัด/สถิติ (ดู admin.html) — ข้อมูลไม่หายไปไหน
+    // แต่ย้ายมาต่อท้ายชื่อเป็นบรรทัดเล็กแทน จะได้ไม่ต้องเลื่อนตารางแนวนอนบนมือถือ
     tr.innerHTML = `
       <td class="py-2.5 pr-3">
         <div class="flex items-center gap-2.5">
           <span class="w-8 h-8 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0">${escapeHtml(u.name.trim().charAt(0) || '?')}</span>
           <div class="min-w-0">
             <div class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(u.name)}${isMe ? ' <span class="text-[10px] font-normal text-blue-600">(คุณ)</span>' : ''}</div>
-            <div class="text-[10px] truncate" style="color:var(--ink-muted)">${escapeHtml(u.userId)}</div>
+            <div class="text-[10px] truncate hidden lg:block" style="color:var(--ink-muted)">${escapeHtml(u.userId)}</div>
+            <div class="text-[10px] truncate lg:hidden" style="color:var(--ink-muted)">${escapeHtml(u.position)}${u.branch ? ' · ' + escapeHtml(u.branch) : ''}</div>
+            <div class="text-[10px] truncate sm:hidden" style="color:var(--ink-muted)">แจ้งซ่อม ${u.reported} · รับผิดชอบ ${u.assigned}</div>
+            <div class="lg:hidden mt-1">${roleBadge(u.role)}</div>
           </div>
         </div>
       </td>
-      <td class="py-2.5 pr-3 text-xs" style="color:var(--ink-2)">${escapeHtml(u.position)}</td>
-      <td class="py-2.5 pr-3 text-xs" style="color:var(--ink-2)">
+      <td class="py-2.5 pr-3 text-xs hidden lg:table-cell" style="color:var(--ink-2)">${escapeHtml(u.position)}</td>
+      <td class="py-2.5 pr-3 text-xs hidden lg:table-cell" style="color:var(--ink-2)">
         <div class="truncate max-w-[16rem]">${escapeHtml(u.branch || '-')}</div>
         <div class="text-[10px] truncate max-w-[16rem]" style="color:var(--ink-muted)">${escapeHtml(u.dept || '')}</div>
       </td>
-      <td class="py-2.5 pr-3">${roleBadge(u.role)}</td>
-      <td class="py-2.5 pr-3 text-right tabular-nums text-xs" style="color:var(--ink-2)">${u.reported}</td>
-      <td class="py-2.5 pr-3 text-right tabular-nums text-xs" style="color:var(--ink-2)">${u.assigned}</td>
+      <td class="py-2.5 pr-3 hidden lg:table-cell">${roleBadge(u.role)}</td>
+      <td class="py-2.5 pr-3 text-right tabular-nums text-xs hidden sm:table-cell" style="color:var(--ink-2)">${u.reported}</td>
+      <td class="py-2.5 pr-3 text-right tabular-nums text-xs hidden sm:table-cell" style="color:var(--ink-2)">${u.assigned}</td>
       <td class="py-2.5 pl-3 text-right">${
         editable
-          ? `<select data-uid="${escapeHtml(u.userId)}" class="role-select border border-slate-300 rounded-lg px-2 py-1 text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500">
+          ? `<select data-uid="${escapeHtml(u.userId)}" class="role-select w-full sm:w-auto border border-slate-300 rounded-lg px-2 py-1.5 sm:py-1 text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500">
                ${Object.entries(ROLES).map(([k, r]) => `<option value="${k}" ${k === u.role ? 'selected' : ''}>${r.label}</option>`).join('')}
              </select>`
           : `<span class="text-[10px]" style="color:var(--ink-muted)">—</span>`
@@ -749,15 +808,18 @@ function normalizeKb(a) {
 }
 
 async function loadKB() {
+  await liffReady;   // ดูคอมเมนต์ที่ liffReady
   try {
     const res = await callBackend('getKnowledgeBase', {});
     if (res && res.status === 'success' && Array.isArray(res.articles)) {
       kbArticles = res.articles.map(normalizeKb);
       usingMockKb = false;
     } else { throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend'); }
+    setMockReason('kbMockReason', null);
   } catch (e) {
     kbArticles = MOCK_KB.map(normalizeKb);
     usingMockKb = true;
+    setMockReason('kbMockReason', e);
   }
   kbLoaded = true;
   renderKB();
@@ -902,6 +964,16 @@ $('closeSkipBtn').addEventListener('click', () => finishClose(''));
 $('closeConfirmBtn').addEventListener('click', () => finishClose($('closeResolution').value.trim()));
 $('closeModal').addEventListener('click', (e) => { if (e.target === $('closeModal')) cancelClose(); });
 
+// หมุนจอ/ย่อขยายหน้าต่าง: กราฟเส้นคำนวณ viewBox จากความกว้างจริง ต้องวาดใหม่
+// (การ์ด/ตารางเป็น CSS ล้วน ปรับเองอยู่แล้ว) — debounce กันวาดรัวตอนลากขอบหน้าต่าง
+let resizeTimer = null;
+window.addEventListener('resize', () => {
+  clearTimeout(resizeTimer);
+  resizeTimer = setTimeout(() => {
+    if (currentView === 'dashboard' && tickets.length) renderDashboard();
+  }, 200);
+});
+
 // ---------- Init ----------
 // ถ้า currentView เป็น view ที่ผลลัพธ์ขึ้นกับตัวตน (settings แสดงบัญชี, users มีปุ่มแก้บทบาท)
 // ต้องวาดใหม่หลัง LIFF login resolve เสร็จ ไม่งั้นค้างสถานะ "ยังไม่ login" ทั้งที่ล็อกอินแล้ว
@@ -910,19 +982,17 @@ function refreshIdentityDependentViews() {
   if (currentView === 'users' && usersLoaded) renderUsers();
 }
 
-async function init() {
-  setStaffUI();
-  initSettingsForm();
-  switchView(localStorage.getItem('ft_view') || 'board');   // จำ view ล่าสุดที่เปิดไว้
-  // ระบุตัวจาก LINE — ใช้ LIFF app ตัวที่ 2 (ADMIN_LIFF_ID, endpoint = admin.html)
-  // ถ้ายังไม่ได้ตั้ง จะ fallback เป็น MY_LIFF_ID (เปิด URL ตรงบนเดสก์ท็อปก็ใช้ได้)
+// ระบุตัวจาก LINE — ใช้ LIFF app ตัวที่ 2 (ADMIN_LIFF_ID, endpoint = admin.html)
+// ถ้ายังไม่ได้ตั้ง จะ fallback เป็น MY_LIFF_ID (เปิด URL ตรงบนเดสก์ท็อปก็ใช้ได้)
+// คืน false เมื่อกำลังเด้งไปหน้า login (หน้านี้กำลังจะถูกทิ้ง ไม่ต้องโหลดข้อมูลต่อ)
+async function setupLiff() {
   try {
     const adminLiffId = (typeof ADMIN_LIFF_ID !== 'undefined' && ADMIN_LIFF_ID)
       ? ADMIN_LIFF_ID
       : (typeof MY_LIFF_ID !== 'undefined' ? MY_LIFF_ID : '');
     if (adminLiffId) {
       await liff.init({ liffId: adminLiffId });
-      if (!liff.isLoggedIn()) { ensureLogin(); return; }  // เด้งไป login แล้วกลับมาที่หน้านี้
+      if (!liff.isLoggedIn()) { ensureLogin(); return false; }  // เด้งไป login แล้วกลับมาที่หน้านี้
 
       const p = await liff.getProfile();
       currentStaffId = p.userId;        // ค่านี้แหละที่ลง IT_In_Charge ได้จริง
@@ -939,6 +1009,14 @@ async function init() {
     setStaffUI();
     refreshIdentityDependentViews();
   }
-  loadTickets();
+  return true;
+}
+
+async function init() {
+  setStaffUI();
+  initSettingsForm();
+  liffReady = setupLiff();   // เริ่ม login ทันที แต่ไม่บล็อกการวาดหน้า — loadX() จะ await เอง
+  switchView(localStorage.getItem('ft_view') || 'board');   // จำ view ล่าสุดที่เปิดไว้
+  if (await liffReady) loadTickets();
 }
 init();

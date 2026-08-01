@@ -19,6 +19,13 @@ async function ftCallBackend(action, data, log) {
   if (log) log('Sending payload to ' + action);
   let idToken = null;
   try { if (typeof liff !== 'undefined' && liff.getIDToken) idToken = liff.getIDToken(); } catch (e) { /* ยังไม่ login */ }
+  // ตัดจบตั้งแต่ที่นี่ถ้าไม่มี token — ACL ฝั่ง backend ไม่มี action ไหนเปิดให้ไม่ login เลย
+  // ยิงไปก็โดนปฏิเสธด้วยข้อความกลางๆ 'ยืนยันตัวตน LINE ไม่สำเร็จ' ซึ่งแยกสาเหตุไม่ออก
+  // getIDToken() คืน null ได้ 2 กรณี: (1) liff.init() ยังไม่เสร็จ หรือยังไม่ login
+  //                                 (2) LIFF app ไม่ได้เปิด scope "openid" ใน LINE console
+  //     — กรณี (2) หลอกมาก เพราะ getProfile() ยังได้ชื่อ/รูปตามปกติ (นั่นคือ scope "profile")
+  //       เห็นชื่อตัวเองมุมขวาบนจึงไม่ได้แปลว่ามี ID Token
+  if (!idToken) throw new Error('ไม่มี LINE ID Token — ยังไม่ได้ login หรือ LIFF app ไม่ได้เปิด scope "openid"');
   const res = await fetch(GAS_API_URL, {
     method: 'POST',
     headers: { 'Content-Type': 'text/plain;charset=utf-8' },

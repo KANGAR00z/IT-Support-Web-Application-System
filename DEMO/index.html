@@ -2,7 +2,11 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <!-- ไม่ใส่ user-scalable=no / maximum-scale แล้ว — มันปิดการซูมของผู้ใช้ทั้งหมด
+       (คนสายตาไม่ดีขยายอ่านไม่ได้) เหตุผลเดิมที่ใส่คือกัน iOS ซูมเองตอนโฟกัสช่องกรอก
+       ซึ่งแก้ที่ต้นเหตุได้ด้วยการบังคับช่องกรอกเป็น 16px ในบล็อก <style> ข้างล่าง
+       viewport-fit=cover: กินพื้นที่ใต้ notch ได้ แล้วเว้นระยะเองด้วย env(safe-area-inset-*) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>FAST TICKET - แจ้งซ่อมไอที</title>
   
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -14,6 +18,23 @@
 
   <style>
     body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; }
+
+    /* iOS ซูมหน้าเองเมื่อโฟกัสช่องกรอกที่ font-size < 16px -> ล็อก 16px บนจอเล็ก
+       (แทนการปิด user-scalable ซึ่งพังเรื่องการเข้าถึง) */
+    /* !important จำเป็น: .text-sm ของ Tailwind เป็น class -> specificity ชนะ element selector
+       ถ้าไม่ใส่ ช่องที่มี .text-sm จะยังเป็น 14px แล้ว iOS ก็ยังซูมเองอยู่ดี */
+    @media (max-width: 767px) {
+      input, select, textarea { font-size: 16px !important; }
+    }
+    /* เว้นพื้นที่ home indicator ของ iPhone ไม่ให้ทับแถบปุ่มล่าง */
+    .safe-b { padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px)); }
+    /* บนเดสก์ท็อป ฟอร์มนี้ถูกออกแบบมาสำหรับมือถือ ถ้าปล่อยเต็มจอ 1920px จะอ่านยากมาก
+       -> คุมความกว้างไว้กลางจอ ให้เหมือนเปิดในแอป LINE */
+    .app-w { width: 100%; max-width: 640px; margin-left: auto; margin-right: auto; }
+    /* บนเดสก์ท็อป กล่องที่เลื่อนได้จะมี scrollbar กินความกว้างไปข้างเดียว ทำให้ฟอร์ม
+       (อยู่ในกล่อง) เยื้องจากแถบปุ่มล่าง (อยู่นอกกล่อง) ~7px — จองที่ scrollbar ทั้งสองข้าง
+       ให้จุดกึ่งกลางตรงกัน · มือถือใช้ overlay scrollbar อยู่แล้ว กฎนี้จึงไม่มีผล */
+    .main-scroll { scrollbar-gutter: stable both-edges; }
   </style>
 </head>
 <body class="flex flex-col h-[100dvh] overflow-hidden">
@@ -22,16 +43,16 @@
     <div class="font-bold text-lg text-slate-800">แจ้งซ่อมใหม่ (FAST TICKET)</div>
   </div>
 
-  <div class="flex-1 overflow-y-auto bg-slate-50 relative">
+  <div class="main-scroll flex-1 overflow-y-auto bg-slate-50 relative">
     
-    <div id="loading" class="flex flex-col items-center justify-center p-10">
+    <div id="loading" class="app-w flex flex-col items-center justify-center p-10">
       <div class="w-8 h-8 border-4 border-[#00B900] border-t-transparent rounded-full animate-spin mb-3"></div>
       <p class="text-slate-500 text-sm">กำลังเชื่อมต่อ LINE...</p>
     </div>
 
-    <div id="formContainer" class="hidden">
+    <div id="formContainer" class="app-w hidden">
       
-      <div class="bg-white p-5 mb-3 border-b border-slate-100 shadow-sm relative">
+      <div class="bg-white p-4 sm:p-5 mb-3 border-b border-slate-100 shadow-sm relative">
         <div class="flex justify-between items-start mb-3">
           <div class="flex items-center space-x-3">
             <div class="w-12 h-12 rounded-full bg-blue-100 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center shrink-0">
@@ -43,7 +64,8 @@
               <div class="text-xs text-slate-400">LINE: <span id="lineNameLabel">-</span></div>
             </div>
           </div>
-          <button type="button" id="toggleEditBtn" class="p-2 rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors">
+          <button type="button" id="toggleEditBtn" aria-label="แก้ไขข้อมูลผู้แจ้ง"
+                  class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors">
             ✏️
           </button>
         </div>
@@ -70,15 +92,15 @@
           <input type="hidden" id="lineUserId">
           <div>
             <label class="text-xs font-medium text-slate-500">ชื่อจริง - นามสกุลจริง <span class="text-red-500">*</span></label>
-            <input type="text" id="inputName" placeholder="เช่น สมชาย ใจดี (ห้ามใช้ชื่อ LINE)" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <input type="text" id="inputName" placeholder="เช่น สมชาย ใจดี (ห้ามใช้ชื่อ LINE)" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
           </div>
           <div>
             <label class="text-xs font-medium text-slate-500">ตำแหน่ง</label>
-            <input type="text" id="inputPosition" value="เจ้าหน้าที่ทั่วไป" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <input type="text" id="inputPosition" value="เจ้าหน้าที่ทั่วไป" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
           </div>
           <div>
             <label class="text-xs font-medium text-slate-500">สาขา / พื้นที่ (Branch)</label>
-            <select id="inputDept" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <select id="inputDept" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
               <option value="1" data-branch="1">สำนักงานสรรพสามิตภาคที่ 9</option>
               <optgroup label="1. พื้นที่สงขลา">
                 <option value="2" data-branch="2">สาขาเมืองสงขลา</option>
@@ -113,7 +135,7 @@
           </div>
           <div>
             <label class="text-xs font-medium text-slate-500">ส่วน / แผนก (Department)</label>
-            <select id="inputDepartment" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <select id="inputDepartment" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
               <option value="1">ส่วนอำนวยการ</option>
               <option value="2">ส่วนบริหารจัดเก็บภาษี</option>
               <option value="3">ส่วนตรวจสอบ ป้องกันและปราบปราม</option>
@@ -123,12 +145,12 @@
           </div>
           <div>
             <label class="text-xs font-medium text-slate-500">เบอร์โทรศัพท์ภายใน (ถ้ามี)</label>
-            <input type="text" id="inputPhone" inputmode="tel" placeholder="เช่น 64305" class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <input type="text" id="inputPhone" inputmode="tel" placeholder="เช่น 64305" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
           </div>
         </div>
       </div>
 
-      <form id="ticketForm" class="p-5 space-y-5">
+      <form id="ticketForm" class="p-4 sm:p-5 space-y-5">
         <div class="space-y-1.5">
           <label class="block text-sm font-bold text-slate-700">เลขครุภัณฑ์ / รหัสเครื่อง (ถ้ามี)</label>
           <input type="text" id="assetId" placeholder="เช่น PC-2023-001" class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all shadow-sm">
@@ -155,16 +177,20 @@
     </div>
   </div>
 
-  <div class="bg-white border-t border-slate-100 p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] relative z-30 flex gap-3">
-    <button id="previewBtn" type="button" class="w-1/2 bg-blue-100 text-blue-600 hover:bg-blue-200 font-bold text-lg py-3.5 rounded-xl transition-all flex items-center justify-center">
-      📄 ดูเอกสาร
-    </button>
-    <button id="submitBtn" disabled class="w-1/2 bg-slate-300 text-white font-bold text-lg py-3.5 rounded-xl transition-all flex items-center justify-center">
-      กำลังเตรียม...
-    </button>
+  <div class="bg-white border-t border-slate-100 p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] relative z-30">
+    <div class="app-w flex gap-3">
+      <!-- text-base บนมือถือ: "ยืนยันแจ้งซ่อม" ที่ 18px ล้นปุ่มครึ่งจอบนเครื่องกว้าง 360px -->
+      <button id="previewBtn" type="button" class="w-1/2 bg-blue-100 text-blue-600 hover:bg-blue-200 font-bold text-base sm:text-lg py-3.5 rounded-xl transition-all flex items-center justify-center">
+        📄 ดูเอกสาร
+      </button>
+      <button id="submitBtn" disabled class="w-1/2 bg-slate-300 text-white font-bold text-base sm:text-lg py-3.5 rounded-xl transition-all flex items-center justify-center">
+        กำลังเตรียม...
+      </button>
+    </div>
   </div>
   
-  <div class="text-center pb-3 bg-white relative z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+  <!-- แถบล่างสุดของหน้า -> เป็นตัวที่ต้องกัน home indicator ของ iPhone มาทับ -->
+  <div class="text-center bg-white relative z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] safe-b">
     <button onclick="toggleDebug()" class="text-[11px] font-medium text-slate-500 hover:text-slate-700 transition-colors inline-flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
       <span id="debugText">เปิด Debug Mode</span>
       <span id="debugArrow" class="transition-transform duration-300">🔼</span>
@@ -182,11 +208,11 @@
   </div>
 
   <div id="previewScreen" class="hidden fixed inset-0 z-[100] bg-slate-100 flex flex-col h-[100dvh]">
-    <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between shadow-sm shrink-0">
-      <div class="font-bold text-lg text-slate-800 flex items-center gap-2">
-        <span>📄 ตรวจสอบเอกสารก่อนส่ง</span>
+    <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-2 shadow-sm shrink-0">
+      <div class="font-bold text-base sm:text-lg text-slate-800 flex items-center gap-2 min-w-0">
+        <span class="truncate">📄 ตรวจสอบเอกสารก่อนส่ง</span>
       </div>
-      <button id="closePreviewBtn" class="text-slate-400 hover:text-slate-600 text-2xl font-bold leading-none px-2">&times;</button>
+      <button id="closePreviewBtn" aria-label="ปิด" class="text-slate-400 hover:text-slate-600 text-2xl font-bold leading-none w-10 h-10 flex items-center justify-center shrink-0">&times;</button>
     </div>
     
     <div class="flex-1 p-0 md:p-2 overflow-hidden relative bg-slate-200">
@@ -197,17 +223,19 @@
       <iframe id="pdfIframe" class="w-full h-full md:rounded-lg bg-white" src="" onload="document.getElementById('pdfLoading').classList.add('hidden')"></iframe>
     </div>
 
-    <div class="bg-white border-t border-slate-200 p-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] flex flex-col gap-3">
-      <button id="downloadPdfBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-base py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/30">
-        ⬇️ ดาวน์โหลด PDF เก็บไว้
-      </button>
-      <div class="flex gap-3">
-        <button id="backToEditBtn" class="w-1/2 bg-slate-100 text-slate-600 border border-slate-300 font-bold text-base py-3.5 rounded-xl transition-all">
-          ✏️ กลับไปแก้ไข
+    <div class="bg-white border-t border-slate-200 px-4 pt-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] safe-b">
+      <div class="app-w flex flex-col gap-3">
+        <button id="downloadPdfBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-base py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/30">
+          ⬇️ ดาวน์โหลด PDF เก็บไว้
         </button>
-        <button id="confirmFromPreviewBtn" class="w-1/2 bg-[#00B900] hover:bg-[#009900] text-white font-bold text-base py-3.5 rounded-xl transition-all shadow-lg shadow-green-500/30">
-          ✅ ยืนยันแจ้งซ่อม
-        </button>
+        <div class="flex gap-3">
+          <button id="backToEditBtn" class="w-1/2 bg-slate-100 text-slate-600 border border-slate-300 font-bold text-sm sm:text-base py-3.5 rounded-xl transition-all">
+            ✏️ กลับไปแก้ไข
+          </button>
+          <button id="confirmFromPreviewBtn" class="w-1/2 bg-[#00B900] hover:bg-[#009900] text-white font-bold text-sm sm:text-base py-3.5 rounded-xl transition-all shadow-lg shadow-green-500/30">
+            ✅ ยืนยันแจ้งซ่อม
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -285,7 +313,8 @@
         const btn = $("submitBtn");
         btn.disabled = false;
         btn.innerText = "ยืนยันแจ้งซ่อม";
-        btn.className = "w-1/2 bg-[#00B900] hover:bg-[#009900] text-white font-bold text-lg py-3.5 rounded-xl shadow-lg shadow-green-500/30 transition-all flex items-center justify-center";
+        // ต้องตรงกับ class ตั้งต้นใน HTML (text-base sm:text-lg) เพราะบรรทัดนี้ทับ className ทั้งก้อน
+        btn.className = "w-1/2 bg-[#00B900] hover:bg-[#009900] text-white font-bold text-base sm:text-lg py-3.5 rounded-xl shadow-lg shadow-green-500/30 transition-all flex items-center justify-center";
       } catch (error) {
         logDebug("ERROR: " + error.message);
         alert("LIFF Error: " + error.message);

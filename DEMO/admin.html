@@ -2,7 +2,8 @@
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- viewport-fit=cover: ให้หน้าเว็บกินพื้นที่ใต้ notch/home indicator ได้ แล้วเราเว้นระยะเองด้วย env(safe-area-inset-*) -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <title>FAST TICKET — Admin | ตารางงาน IT</title>
 
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
@@ -49,8 +50,9 @@
     .viz-kpi-label { display: flex; align-items: center; gap: .5rem; font-size: .75rem; font-weight: 500; color: var(--ink-2); }
     .viz-dot { width: .625rem; height: .625rem; border-radius: 9999px; flex: none; }
     /* ตัวเลขใส่ ink เสมอ ไม่ใส่สีซีรีส์ — จุดสีข้างๆ เป็นตัวบอก identity */
-    .viz-kpi-value { font-size: 1.875rem; font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: .375rem; }
-    .viz-hero { font-size: 3rem; font-weight: 700; color: var(--ink); line-height: 1.05; margin-top: .25rem; }
+    /* clamp: บนมือถือ KPI เรียง 2 คอลัมน์ ตัวเลข 3 หลักที่ 3rem จะเบียดจนล้นการ์ด */
+    .viz-kpi-value { font-size: clamp(1.5rem, 6vw, 1.875rem); font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: .375rem; }
+    .viz-hero { font-size: clamp(2.25rem, 9vw, 3rem); font-weight: 700; color: var(--ink); line-height: 1.05; margin-top: .25rem; }
     .viz-kpi-sub { font-size: .6875rem; color: var(--ink-muted); margin-top: .125rem; }
     .viz-tip { position: absolute; pointer-events: none; z-index: 20; background: var(--ink); color: #fff;
                font-size: .6875rem; padding: .375rem .5rem; border-radius: .375rem; white-space: nowrap;
@@ -71,11 +73,46 @@
     .drag-ghost { opacity: .4; }
     .col-over { outline: 2px dashed #94a3b8; outline-offset: -6px; background: #eef2f7; }
     [draggable="true"] { -webkit-user-drag: element; }
+
+    /* ===== มือถือ / จอสัมผัส ====================================================
+       1) iOS ซูมหน้าเองอัตโนมัติเมื่อโฟกัสช่องกรอกที่ font-size < 16px
+          -> ล็อกช่องกรอกเป็น 16px บนจอเล็ก แทนการใส่ user-scalable=no
+             (ปิดซูม = คนสายตาสั้นขยายอ่านไม่ได้ ห้ามทำ)
+       2) แถบเมนูล่างสำหรับมือถือ — sidebar ซ่อนตั้งแต่ต่ำกว่า md ถ้าไม่มีอันนี้
+          จะสลับหน้าไม่ได้เลยบนมือถือ
+       ========================================================================== */
+    /* !important จำเป็น: utility ของ Tailwind (.text-sm/.text-xs) เป็น class = specificity
+       สูงกว่า element selector เปล่าๆ ถ้าไม่ใส่ กฎนี้จะแพ้ทุกช่องที่มี .text-sm -> iOS ซูมอยู่ดี */
+    @media (max-width: 767px) {
+      input, select, textarea { font-size: 16px !important; }
+    }
+    /* เผื่อพื้นที่ home indicator ของ iPhone ไม่ให้ทับแถบเมนูล่าง */
+    .safe-b { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+    .tab-item { color: var(--ink-muted); }
+    .tab-item:hover { background: transparent; }
+    /* วางหลัง .nav-item.active — specificity เท่ากัน (0,2,0) ตัวหลังชนะ
+       แถบล่างไฮไลต์แค่ "วงกลมรอบไอคอน" ไม่ใช่ทั้งปุ่ม ไม่งั้นดูหนักตา */
+    .tab-item.active { background: transparent; color: #1d4ed8; }
+    .tab-item.active .tab-ico { background: #eff6ff; }
+
+    /* บอร์ดบนมือถือ: เลื่อนทีละคอลัมน์ (snap) ไม่ให้ค้างคาครึ่งคอลัมน์ */
+    @media (max-width: 767px) {
+      .board-scroll { scroll-snap-type: x mandatory; }
+      .board-col { scroll-snap-align: start; }
+    }
+    /* แผนที่: สูงตามความกว้างจอ ไม่ fix 400px (บนมือถือจะเหลือที่ว่างบน-ล่างเยอะ) */
+    .map-svg { width: 100%; height: clamp(260px, 52vw, 400px); }
+    /* ปุ่มบนการ์ด: บนจอสัมผัสต้องกดโดนง่าย (เป้าหมาย ~44px) และห้ามหดจนตัดคำ */
+    .card-act { padding: .375rem .625rem; border-radius: .5rem; flex: none; white-space: nowrap; }
+    @media (hover: none) {
+      .card-act { padding: .5rem .75rem; min-height: 40px; display: inline-flex; align-items: center; gap: .25rem; }
+    }
   </style>
 </head>
-<body class="viz-root h-[100dvh] overflow-hidden text-slate-800">
+<body class="viz-root h-[100dvh] overflow-hidden text-slate-800 flex flex-col">
 
-  <div class="flex h-full">
+  <div class="flex flex-1 min-h-0">
 
     <!-- ================= Sidebar ================= -->
     <aside class="w-64 shrink-0 bg-white border-r border-slate-200 hidden md:flex flex-col">
@@ -103,16 +140,18 @@
     <main class="flex-1 flex flex-col min-w-0">
 
       <!-- Topbar -->
-      <header class="bg-white border-b border-slate-200 px-5 py-3.5 flex items-center justify-between gap-3 shrink-0">
-        <div>
-          <h1 id="viewTitle" class="font-bold text-lg leading-tight">ตารางงาน IT Support (Task Board)</h1>
-          <p id="viewSubtitle" class="text-xs text-slate-500 hidden sm:block">จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ</p>
+      <header class="bg-white border-b border-slate-200 px-3.5 md:px-5 py-3 md:py-3.5 flex items-center justify-between gap-2 shrink-0">
+        <!-- min-w-0 + truncate: หัวข้อยาว (เช่น "ตารางงาน IT Support (Task Board)") ต้องหดได้
+             ไม่งั้นบนมือถือมันจะดันปุ่มบัญชีตกขอบจอ -->
+        <div class="min-w-0">
+          <h1 id="viewTitle" class="font-bold text-base md:text-lg leading-tight truncate">ตารางงาน IT Support (Task Board)</h1>
+          <p id="viewSubtitle" class="text-xs text-slate-500 hidden sm:block truncate">จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ</p>
         </div>
-        <div class="flex items-center gap-2">
-          <button id="refreshBtn" title="โหลดใหม่" class="p-2 rounded-lg hover:bg-slate-100 text-slate-500 text-sm">🔄</button>
-          <button id="staffBtn" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 rounded-full pl-2 pr-3 py-1.5 text-sm font-medium transition-colors">
-            <span class="w-6 h-6 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center" id="staffAvatar">?</span>
-            <span id="staffName" class="text-slate-600">เข้าสู่ระบบ LINE</span>
+        <div class="flex items-center gap-1.5 shrink-0">
+          <button id="refreshBtn" title="โหลดใหม่" aria-label="โหลดใหม่" class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-slate-100 active:bg-slate-200 text-slate-500">🔄</button>
+          <button id="staffBtn" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-full pl-1.5 pr-2.5 md:pl-2 md:pr-3 py-1.5 text-sm font-medium transition-colors min-h-[40px]">
+            <span class="w-7 h-7 rounded-full bg-blue-600 text-white text-xs flex items-center justify-center shrink-0" id="staffAvatar">?</span>
+            <span id="staffName" class="text-slate-600 truncate max-w-[5.5rem] sm:max-w-[10rem]">เข้าสู่ระบบ LINE</span>
           </button>
         </div>
       </header>
@@ -120,12 +159,13 @@
       <!-- Mock banner -->
       <div id="mockBanner" class="hidden bg-amber-50 border-b border-amber-200 text-amber-800 text-xs px-5 py-2 flex items-center gap-2">
         <span>⚠️</span>
-        <span><b>โหมดตัวอย่าง</b> — เชื่อมต่อ backend ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง · การเปลี่ยนสถานะจะยังไม่บันทึกจริง (กด 🔄 เพื่อลองใหม่)</span>
+        <span><b>โหมดตัวอย่าง</b> — เชื่อมต่อ backend ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง · การเปลี่ยนสถานะจะยังไม่บันทึกจริง (กด 🔄 เพื่อลองใหม่)
+          <span id="mockReason" class="block mt-0.5 opacity-80"></span></span>
       </div>
 
       <!-- ================= View: Task Board ================= -->
-      <div id="viewBoard" class="flex-1 overflow-x-auto overflow-y-hidden p-4">
-        <div id="board" class="flex gap-4 h-full min-w-max">
+      <div id="viewBoard" class="board-scroll flex-1 overflow-x-auto overflow-y-hidden p-3 md:p-4">
+        <div id="board" class="flex gap-3 md:gap-4 h-full min-w-max">
           <!-- คอลัมน์ถูกสร้างด้วย JS -->
           <div id="boardLoading" class="flex items-center justify-center w-[80vw] text-slate-400 text-sm gap-2">
             <span class="w-5 h-5 border-2 border-blue-500 border-t-transparent rounded-full animate-spin"></span>
@@ -135,10 +175,10 @@
       </div>
 
       <!-- ================= View: Dashboard ================= -->
-      <div id="viewDashboard" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
+      <div id="viewDashboard" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
 
         <!-- KPI row — stat tiles (ตัวเลขพาดหัว ไม่ใช่กราฟแท่ง) -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3">
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--ink-muted)"></span>ตั๋วทั้งหมด</div>
             <div class="viz-hero" id="kpiTotal">0</div>
@@ -162,7 +202,7 @@
         </div>
 
         <!-- SLA tiles -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 md:gap-3">
           <div class="viz-card">
             <div class="viz-kpi-label">⏱️ เวลาเฉลี่ยกว่าจะรับงาน</div>
             <div class="viz-kpi-value" id="slaAccept">—</div>
@@ -181,11 +221,13 @@
         </div>
 
         <!-- Trend + Category -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
           <div class="viz-card lg:col-span-2">
             <div class="viz-title">ตั๋วแจ้งเข้าใหม่ · 30 วันล่าสุด</div>
-            <div class="viz-sub">นับตามวันที่แจ้ง</div>
+            <div class="viz-sub">นับตามวันที่แจ้ง · แตะจุดเพื่อดูตัวเลข</div>
             <div class="relative mt-3">
+              <!-- viewBox/ความสูงถูกคำนวณใหม่ตามความกว้างจริงใน renderTrend()
+                   ถ้า fix ไว้ 640x170 บนมือถือ SVG จะย่อจนตัวหนังสือเหลือ ~5px อ่านไม่ออก -->
               <svg id="trendChart" viewBox="0 0 640 170" class="w-full" style="height:170px" role="img" aria-label="กราฟจำนวนตั๋วแจ้งเข้าใหม่รายวัน 30 วันล่าสุด"></svg>
               <div id="trendTip" class="viz-tip hidden"></div>
             </div>
@@ -198,12 +240,12 @@
         </div>
 
         <!-- Map + Province ranking -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
           <div class="viz-card lg:col-span-2">
             <div class="viz-title">แผนที่พื้นที่ 7 จังหวัดภาคใต้ตอนล่าง</div>
-            <div class="viz-sub">สีเข้ม = ตั๋วเยอะ · วางเมาส์บนจังหวัดเพื่อดูรายละเอียด</div>
+            <div class="viz-sub">สีเข้ม = ตั๋วเยอะ · แตะ/วางเมาส์บนจังหวัดเพื่อดูรายละเอียด</div>
             <div class="relative mt-2">
-              <svg id="provMap" class="w-full" style="height:400px" role="img" aria-label="แผนที่แสดงจำนวนตั๋วแยกตามจังหวัด 7 จังหวัดภาคใต้ตอนล่าง"></svg>
+              <svg id="provMap" class="map-svg" role="img" aria-label="แผนที่แสดงจำนวนตั๋วแยกตามจังหวัด 7 จังหวัดภาคใต้ตอนล่าง"></svg>
               <div id="mapTip" class="viz-tip hidden"></div>
             </div>
             <div class="flex items-center justify-between gap-2 mt-1">
@@ -219,7 +261,7 @@
         </div>
 
         <!-- Workload + Aging table -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
           <div class="viz-card">
             <div class="viz-title">ภาระงานเจ้าหน้าที่</div>
             <div class="viz-sub">ตั๋วที่รับผิดชอบอยู่</div>
@@ -229,13 +271,17 @@
             <div class="viz-title">ตั๋วค้างนานที่สุด (ยังไม่รับเรื่อง)</div>
             <div class="viz-sub">เรียงจากแจ้งนานสุด</div>
             <div class="overflow-x-auto mt-2">
-              <table class="w-full text-sm" id="agingTable">
+              <!-- table-fixed บนจอเล็กด้วยเหตุผลเดียวกับตารางผู้ใช้: auto-layout ขยายคอลัมน์
+                   ตามความยาวข้อความจริง (326px ในกรอบ 296px ที่จอ 320) ทำให้ truncate ไม่ทำงาน -->
+              <table class="w-full text-sm table-fixed sm:table-auto" id="agingTable">
                 <thead>
+                  <!-- "พื้นที่" ซ่อนบนจอเล็ก — 4 คอลัมน์ไม่พอใน 360px ทำให้ต้องเลื่อนแนวนอน
+                       ทั้งที่คอลัมน์นี้เป็นข้อมูลรอง (ดูเต็มได้ที่แผนที่/อันดับพื้นที่ด้านบน) -->
                   <tr class="text-left text-[11px] uppercase tracking-wider" style="color:var(--ink-muted)">
-                    <th class="py-2 pr-3 font-semibold">รหัส</th>
+                    <th class="py-2 pr-3 font-semibold w-[24%] sm:w-auto">รหัส</th>
                     <th class="py-2 pr-3 font-semibold">รายละเอียด</th>
-                    <th class="py-2 pr-3 font-semibold">พื้นที่</th>
-                    <th class="py-2 pr-3 font-semibold text-right">ค้างมาแล้ว</th>
+                    <th class="py-2 pr-3 font-semibold hidden sm:table-cell">พื้นที่</th>
+                    <th class="py-2 pr-3 font-semibold text-right w-[30%] sm:w-auto">ค้างมาแล้ว</th>
                   </tr>
                 </thead>
                 <tbody id="agingBody"></tbody>
@@ -247,16 +293,17 @@
       </div>
 
       <!-- ================= View: Users ================= -->
-      <div id="viewUsers" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
+      <div id="viewUsers" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
 
         <!-- แถบเตือนโหมดตัวอย่างของโมดูลนี้ (backend ยังไม่มี getUsers / เรียกไม่สำเร็จ) -->
         <div id="usersMockBanner" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2 rounded-lg flex items-center gap-2">
           <span>⚠️</span>
-          <span><b>โหมดตัวอย่าง</b> — เรียก getUsers ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง · การเปลี่ยนบทบาทจะยังไม่บันทึกจริง</span>
+          <span><b>โหมดตัวอย่าง</b> — เรียก getUsers ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง · การเปลี่ยนบทบาทจะยังไม่บันทึกจริง
+            <span id="usersMockReason" class="block mt-0.5 opacity-80"></span></span>
         </div>
 
         <!-- KPI row -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3">
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--ink-muted)"></span>ผู้ใช้ทั้งหมด</div>
             <div class="viz-hero" id="usrTotal">0</div>
@@ -286,23 +333,36 @@
               <div class="viz-title">บัญชีผู้ใช้งาน</div>
               <div class="viz-sub">จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด</div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
+            <!-- ช่องค้นหาเต็มความกว้างบนมือถือ (w-56 ตายตัวจะดันชิพบทบาทตกบรรทัดแปลกๆ) -->
+            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <input id="userSearch" type="text" placeholder="ค้นหาชื่อ / ตำแหน่ง / สาขา..."
-                     class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-56">
-              <div id="roleChips" class="flex items-center gap-1.5 text-xs"></div>
+                     class="border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-56">
+              <div id="roleChips" class="flex flex-wrap items-center gap-1.5 text-xs"></div>
             </div>
           </div>
+          <!-- คอลัมน์รอง (ตำแหน่ง/สังกัด/สถิติ) ซ่อนบนจอเล็ก เหลือ ผู้ใช้-บทบาท-เปลี่ยนบทบาท
+               ซึ่งเป็นงานหลักของหน้านี้ — ดีกว่าปล่อยให้เลื่อนแนวนอน 7 คอลัมน์บนมือถือ
+               (ชื่อผู้ใช้จะพ่วงตำแหน่ง/สังกัดไว้ใต้ชื่อให้เองใน renderUsers) -->
+          <!-- table-fixed บนมือถือ: ถ้าใช้ auto-layout เบราว์เซอร์จะขยายคอลัมน์ตามความยาว
+               เนื้อหาจริง (ตารางกว้าง 476px ในกรอบ 317px) ทำให้ truncate ไม่มีผลและต้อง
+               เลื่อนแนวนอน — fixed บังคับให้คอลัมน์แบ่งความกว้างตาม % ที่กำหนด แล้ว
+               truncate จึงทำงาน · จอ sm ขึ้นไปกลับไปใช้ auto ตามเดิม -->
+          <!-- ความกว้างคอลัมน์เป็น % ต่อ breakpoint เพราะ table-fixed แบ่งพื้นที่ตามที่กำหนด
+               เท่านั้น (รวมต้องได้ 100% ของคอลัมน์ที่ "มองเห็น" ในช่วงนั้น):
+                 < sm  : ผู้ใช้ 58 + เปลี่ยนบทบาท 42
+                 sm-lg : ผู้ใช้ 44 + แจ้งซ่อม 13 + รับผิดชอบ 15 + เปลี่ยนบทบาท 28
+                 lg+   : กลับไปใช้ auto แสดงครบ 7 คอลัมน์ -->
           <div class="overflow-x-auto mt-3">
-            <table class="w-full text-sm">
+            <table class="w-full text-sm table-fixed lg:table-auto">
               <thead>
                 <tr class="text-left text-[11px] uppercase tracking-wider" style="color:var(--ink-muted)">
-                  <th class="py-2 pr-3 font-semibold">ผู้ใช้</th>
-                  <th class="py-2 pr-3 font-semibold">ตำแหน่ง</th>
-                  <th class="py-2 pr-3 font-semibold">สังกัด</th>
-                  <th class="py-2 pr-3 font-semibold">บทบาท</th>
-                  <th class="py-2 pr-3 font-semibold text-right">แจ้งซ่อม</th>
-                  <th class="py-2 pr-3 font-semibold text-right">รับผิดชอบ</th>
-                  <th class="py-2 pl-3 font-semibold text-right">เปลี่ยนบทบาท</th>
+                  <th class="py-2 pr-3 font-semibold w-[58%] sm:w-[44%] lg:w-auto">ผู้ใช้</th>
+                  <th class="py-2 pr-3 font-semibold hidden lg:table-cell">ตำแหน่ง</th>
+                  <th class="py-2 pr-3 font-semibold hidden lg:table-cell">สังกัด</th>
+                  <th class="py-2 pr-3 font-semibold hidden lg:table-cell">บทบาท</th>
+                  <th class="py-2 pr-3 font-semibold text-right hidden sm:table-cell sm:w-[13%] lg:w-auto">แจ้งซ่อม</th>
+                  <th class="py-2 pr-3 font-semibold text-right hidden sm:table-cell sm:w-[15%] lg:w-auto">รับผิดชอบ</th>
+                  <th class="py-2 pl-3 font-semibold text-right w-[42%] sm:w-[28%] lg:w-auto">เปลี่ยนบทบาท</th>
                 </tr>
               </thead>
               <tbody id="usersBody"></tbody>
@@ -317,11 +377,12 @@
       </div>
 
       <!-- ================= View: Knowledge Base ================= -->
-      <div id="viewKB" class="hidden flex-1 overflow-y-auto p-4 space-y-4">
+      <div id="viewKB" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
 
         <div id="kbMockBanner" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2 rounded-lg flex items-center gap-2">
           <span>⚠️</span>
-          <span><b>โหมดตัวอย่าง</b> — เรียก getKnowledgeBase ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง</span>
+          <span><b>โหมดตัวอย่าง</b> — เรียก getKnowledgeBase ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง
+            <span id="kbMockReason" class="block mt-0.5 opacity-80"></span></span>
         </div>
 
         <div class="viz-card">
@@ -330,9 +391,9 @@
               <div class="viz-title">ฐานความรู้ (Knowledge Base)</div>
               <div class="viz-sub">รวมวิธีแก้ไขปัญหาจากตั๋วที่ปิดงานแล้ว · บันทึกอัตโนมัติตอนปิดงานบนตารางงาน IT</div>
             </div>
-            <div class="flex flex-wrap items-center gap-2">
+            <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
               <input id="kbSearchInput" type="text" placeholder="ค้นหาอาการ / วิธีแก้ไข..."
-                     class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-56">
+                     class="border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none w-full sm:w-56">
               <div id="kbCatChips" class="flex flex-wrap items-center gap-1.5 text-xs"></div>
             </div>
           </div>
@@ -345,7 +406,7 @@
       </div>
 
       <!-- ================= View: Settings ================= -->
-      <div id="viewSettings" class="hidden flex-1 overflow-y-auto p-4 space-y-4 max-w-2xl">
+      <div id="viewSettings" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4 max-w-2xl">
 
         <div class="viz-card">
           <div class="viz-title">บัญชีของฉัน</div>
@@ -356,10 +417,10 @@
         <div class="viz-card">
           <div class="viz-title">การแจ้งเตือนตั๋วค้าง</div>
           <div class="viz-sub">ใช้กำหนดว่าตั๋วที่ยังไม่รับเรื่องนานแค่ไหนถึงจะถือว่า "ค้าง" ในแดชบอร์ด</div>
-          <div class="flex items-center gap-3 mt-3">
+          <div class="flex flex-wrap items-center gap-x-3 gap-y-2 mt-3">
             <label for="agingDaysInput" class="text-sm" style="color:var(--ink-2)">แจ้งเตือนเมื่อค้างเกิน</label>
             <input id="agingDaysInput" type="number" min="1" max="30" step="1"
-                   class="border border-slate-300 rounded-lg px-3 py-1.5 text-sm w-20 text-center focus:ring-2 focus:ring-blue-500 outline-none">
+                   class="border border-slate-300 rounded-lg px-3 py-2 sm:py-1.5 text-sm w-20 text-center focus:ring-2 focus:ring-blue-500 outline-none">
             <span class="text-sm" style="color:var(--ink-2)">วัน</span>
             <span id="agingSavedNote" class="hidden text-xs" style="color:var(--st-done)">✓ บันทึกแล้ว</span>
           </div>
@@ -371,9 +432,31 @@
     </main>
   </div>
 
+  <!-- ================= แถบเมนูล่าง (เฉพาะมือถือ) =================
+       ใช้ class "nav-item" เหมือน sidebar -> ตัว JS เดิม (querySelectorAll('.nav-item'))
+       ผูก event + toggle .active ให้ทั้งสองชุดอัตโนมัติ ไม่ต้องแก้ลอจิกสลับหน้า -->
+  <nav class="md:hidden shrink-0 bg-white border-t border-slate-200 grid grid-cols-5 safe-b">
+    <a data-view="dashboard" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
+      <span class="tab-ico text-base leading-none px-3 py-1 rounded-full">📊</span>
+      <span class="text-[10px] font-medium">แดชบอร์ด</span></a>
+    <a data-view="board" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
+      <span class="tab-ico text-base leading-none px-3 py-1 rounded-full">🗂️</span>
+      <span class="text-[10px] font-medium">ตารางงาน</span></a>
+    <a data-view="kb" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
+      <span class="tab-ico text-base leading-none px-3 py-1 rounded-full">📚</span>
+      <span class="text-[10px] font-medium">ฐานความรู้</span></a>
+    <a data-view="users" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
+      <span class="tab-ico text-base leading-none px-3 py-1 rounded-full">👥</span>
+      <span class="text-[10px] font-medium">ผู้ใช้งาน</span></a>
+    <a data-view="settings" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
+      <span class="tab-ico text-base leading-none px-3 py-1 rounded-full">⚙️</span>
+      <span class="text-[10px] font-medium">ตั้งค่า</span></a>
+  </nav>
+
   <!-- ================= Close-ticket Modal (ผูกกับ Knowledge Base) ================= -->
-  <div id="closeModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl w-full max-w-lg shadow-2xl">
+  <!-- มือถือ: ชิดล่างเป็น bottom sheet (นิ้วโป้งถึง + ไม่โดนคีย์บอร์ดดันจนล้น) · จอใหญ่: กลางจอเหมือนเดิม -->
+  <div id="closeModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+    <div class="bg-white rounded-t-2xl sm:rounded-xl w-full max-w-lg shadow-2xl max-h-[90dvh] overflow-y-auto safe-b">
       <div class="px-5 py-4 border-b border-slate-200">
         <div class="font-bold text-slate-800">✓ ปิดงาน</div>
         <div class="text-xs text-slate-500 mt-0.5">บันทึกวิธีแก้ไขปัญหา (ถ้ามี) เพื่อเก็บเข้าฐานความรู้ให้เจ้าหน้าที่คนอื่นค้นหาได้ภายหลัง</div>
@@ -383,22 +466,25 @@
         <textarea id="closeResolution" rows="4" placeholder="เช่น เปลี่ยนสาย HDMI ใหม่, รีสตาร์ทเราเตอร์แล้วตั้งค่า DNS ใหม่..."
                   class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-1.5 resize-none focus:ring-2 focus:ring-blue-500 outline-none"></textarea>
       </div>
-      <div class="px-5 pb-5 flex items-center justify-end gap-2">
-        <button id="closeCancelBtn" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100">ยกเลิก</button>
-        <button id="closeSkipBtn" class="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 border border-slate-300 hover:bg-slate-50">ปิดงานโดยไม่บันทึก</button>
-        <button id="closeConfirmBtn" class="px-4 py-2 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700">บันทึกและปิดงาน</button>
+      <!-- ปุ่ม 3 อันรวมกันกว้างเกิน 360px -> มือถือเรียงแนวตั้ง
+           flex-col-reverse: ปุ่มหลัก (อันสุดท้ายใน DOM) ขึ้นไปอยู่บนสุดบนมือถือ -->
+      <div class="px-4 sm:px-5 pb-5 flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-2">
+        <button id="closeCancelBtn" class="px-4 py-3 sm:py-2 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100">ยกเลิก</button>
+        <button id="closeSkipBtn" class="px-4 py-3 sm:py-2 rounded-lg text-sm font-medium text-slate-600 border border-slate-300 hover:bg-slate-50">ปิดงานโดยไม่บันทึก</button>
+        <button id="closeConfirmBtn" class="px-4 py-3 sm:py-2 rounded-lg text-sm font-bold text-white bg-emerald-600 hover:bg-emerald-700">บันทึกและปิดงาน</button>
       </div>
     </div>
   </div>
 
   <!-- ================= PDF Modal ================= -->
-  <div id="pdfModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-    <div class="bg-white rounded-xl w-full max-w-3xl h-[85vh] flex flex-col overflow-hidden shadow-2xl">
-      <div class="flex items-center justify-between px-4 py-3 border-b border-slate-200">
-        <div class="font-bold flex items-center gap-2">📄 <span id="pdfTitle">บันทึกข้อความ</span></div>
-        <div class="flex items-center gap-2">
-          <a id="pdfOpen" target="_blank" class="text-sm text-blue-600 hover:underline">เปิดแท็บใหม่ ↗</a>
-          <button id="pdfClose" class="text-slate-400 hover:text-slate-700 text-2xl leading-none px-1">&times;</button>
+  <!-- มือถือ: เต็มจอ (iframe PDF เล็กกว่านี้อ่านไม่ออก) · จอใหญ่: กล่องกลางจอ -->
+  <div id="pdfModal" class="hidden fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-0 sm:p-4">
+    <div class="bg-white rounded-none sm:rounded-xl w-full max-w-3xl h-[100dvh] sm:h-[85dvh] flex flex-col overflow-hidden shadow-2xl">
+      <div class="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b border-slate-200">
+        <div class="font-bold flex items-center gap-2 min-w-0"><span class="shrink-0">📄</span> <span id="pdfTitle" class="truncate">บันทึกข้อความ</span></div>
+        <div class="flex items-center gap-1 shrink-0">
+          <a id="pdfOpen" target="_blank" class="text-sm text-blue-600 hover:underline px-2 py-2">เปิดแท็บใหม่ ↗</a>
+          <button id="pdfClose" aria-label="ปิด" class="text-slate-400 hover:text-slate-700 text-2xl leading-none w-10 h-10 flex items-center justify-center">&times;</button>
         </div>
       </div>
       <iframe id="pdfFrame" class="flex-1 w-full bg-slate-100" src=""></iframe>

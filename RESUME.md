@@ -4,20 +4,24 @@
 > ไฟล์นี้ sync ข้ามเครื่องผ่าน git — บน laptop รัน `git pull` ก่อนเริ่มเสมอ
 
 ## วิธีทำงานข้ามเครื่อง (PC ↔ laptop) — สำคัญ
-ทำงานใน git clone **ที่เดียว**: `IT-Support-Web-Application-System/DEMO/`
+ทำงานใน git clone **ที่เดียว**: `IT-Support-Web-Application-System/`
 รอบทำงาน: `git pull` → แก้ไฟล์ → `git commit -am "..."` → `git push`
 อีกเครื่องแค่ `git pull` — **ห้ามก๊อปไฟล์ข้ามโฟลเดอร์/เครื่องเด็ดขาด** (ต้นเหตุไฟล์เพี้ยน)
 
 ## สถาปัตยกรรมย่อ
-- **Frontend** (repo นี้): `DEMO/index.html` (LIFF แจ้งซ่อม) + `DEMO/admin.html` (Kanban) + `DEMO/config.js`
-- **Backend**: Google Apps Script แยกโปรเจกต์ (`Code.gs` มี DB creds — **ห้าม commit**, gitignore กันไว้แล้ว)
-- **DB**: Supabase Postgres · **PDF**: Google Drive · **Deploy**: Cloudflare Worker
+> โครงสร้างโฟลเดอร์เต็ม + ขั้นตอน deploy ละเอียด ดู [README.md](README.md)
+> ข้อห้ามในการแก้โค้ด ดู [CLAUDE.md](CLAUDE.md)
+
+- **`DEMO/`** → Cloudflare Worker: `index.html` (LIFF แจ้งซ่อม) + `admin.html` (Kanban) + `config.js`
+- **`gas/`** → Google Apps Script: `AdminApi.gs` (ลอจิก) + `Template.html` (แม่แบบ PDF)
+  + `Code.gs` (มี DB creds — **ห้าม commit**, gitignore กันไว้แล้ว)
+- **DB**: Supabase Postgres · **PDF**: Google Drive
 - Frontend คุย backend ผ่าน `callBackend()` POST `text/plain` (จงใจหลบ CORS — อย่าเปลี่ยนเป็น application/json)
 
-## Deploy
-- Live: https://fast-ticket-app.darkness7256.workers.dev/ (Cloudflare Worker)
-- วิธี deploy = **ลากโฟลเดอร์ `DEMO` อัปเองบน Cloudflare dashboard** (Worker `fast-ticket-app`)
-- LINK.txt (Netlify) ในrepo = **ของเก่า ไม่ใช้แล้ว**
+## Deploy — 2 ที่ แยกกันคนละรอบ
+- Live: https://fast-ticket-app.darkness7256.workers.dev/ (Cloudflare Worker `fast-ticket-app`)
+- แก้ `DEMO/` → **ลากโฟลเดอร์ `DEMO` อัปเองบน Cloudflare dashboard**
+- แก้ `gas/` → ก๊อปวางใน Apps Script editor → **Deploy → New version** (Save เฉยๆ ไม่พอ)
 
 ## ค้างอยู่ (TODO ทำต่อ)
 - [ ] **Deploy admin.html** — ลากโฟลเดอร์ `DEMO` อัปใหม่ (รอบล่าสุดยังไม่มี admin.html → ตอนนี้ `/admin.html` = 404) แล้วเช็คว่าขึ้น 200
