@@ -57,8 +57,10 @@ const SEQ = ['--seq-1','--seq-2','--seq-3','--seq-4'];   // ramp 4 ขั้น�
 const NO_PROV = 'ไม่ระบุพื้นที่';
 const DAY_MS = 86400000;
 
+// พื้นหลังกับตัวอักษรต้องเป็นสีเดียวกัน (เฉด 100 คู่กับ 700) เหมือนอีกสามหมวด
+// พื้นส้ม + ตัวอักษรแดง อ่านเหมือนใส่ผิดมากกว่าตั้งใจเน้น
 const catColor = (c) => ({
-  'ฮาร์ดแวร์':'bg-orange-100 text-orange-700',
+  'ฮาร์ดแวร์':'bg-red-100 text-red-700',
   'ซอฟต์แวร์':'bg-blue-100 text-blue-700',
   'เครือข่าย':'bg-purple-100 text-purple-700'
 }[c] || 'bg-slate-100 text-slate-600');
@@ -69,6 +71,21 @@ const cssVar = (n) => getComputedStyle(document.body).getPropertyValue(n).trim()
 let tickets = [];
 let usingMock = false;
 let currentView = 'board';
+// ---------- ตัวกรองของบอร์ด ----------
+// พอคิวงานยาวขึ้น การวาดทุกใบพร้อมกันทำให้หางานไม่เจอและ DOM บวมจนเลื่อนหนืด
+// จึงต้องมีทั้ง "กรองให้เหลือน้อยลง" และ "ทยอยวาด" ควบคู่กัน
+let boardSearch = '';
+let boardCat = 'all';
+let boardProv = 'all';
+let boardMine = false;
+let boardSort = 'new';        // new = ใหม่สุดก่อน · old = เก่าสุดก่อน (ไล่งานค้าง)
+// คอลัมน์ "เสร็จสิ้น" โตขึ้นเรื่อยๆ ไม่มีวันหยุด และงานที่ปิดไปนานแล้วแทบไม่มีใครดู
+// จึงตัดให้เหลือเฉพาะช่วงล่าสุด (0 = แสดงทั้งหมด)
+let closedDays = parseInt(localStorage.getItem('ft_closed_days'), 10);
+if (isNaN(closedDays)) closedDays = 7;
+let boardCompact = localStorage.getItem('ft_board_compact') === '1';
+const BOARD_PAGE = 25;        // จำนวนการ์ดที่วาดต่อคอลัมน์ในรอบแรก
+let colLimit = {};            // status -> จำนวนที่แสดงอยู่ตอนนี้
 // โมดูล Users — โหลดแบบ lazy ตอนเข้าหน้า ไม่ดึงพร้อมตั๋ว
 let users = [];
 let usingMockUsers = false;
@@ -81,6 +98,7 @@ let usingMockKb = false;
 let kbLoaded = false;
 let kbSearch = '';
 let kbCatFilter = 'all';
+let pendingKbEditId = null;   // KB_ID ที่กำลังแก้ไขใน kbEditModal
 // ticketId ที่รอกรอกวิธีแก้ไขใน closeModal ก่อนปิดงานจริง (ดู requestClose/finishClose)
 let pendingCloseId = null;
 // ---------- Settings ----------
@@ -88,8 +106,11 @@ let pendingCloseId = null;
 // เพิ่มตาราง/คอลัมน์ backend สำหรับตั้งค่าที่มีแค่ตัวเดียวตอนนี้
 let agingDays = parseInt(localStorage.getItem('ft_aging_days'), 10) || 3;
 // ตัวตนเจ้าหน้าที่มาจาก LINE login เท่านั้น (เหตุผลดู contract ด้านบน)
-let currentStaff   = localStorage.getItem('ft_staff') || '';      // ชื่อสำหรับแสดงผล
+let currentStaff   = localStorage.getItem('ft_staff') || '';      // ชื่อสำหรับแสดงผล (LINE displayName -> ถูกแทนที่ด้วย Full_Name จาก DB หลังโหลดโปรไฟล์)
 let currentStaffId = localStorage.getItem('ft_staff_id') || '';   // LINE userId ที่ส่งให้ backend
+let staffPicUrl    = localStorage.getItem('ft_staff_pic') || '';   // URL รูปโปรไฟล์จาก LINE
+// ข้อมูลจาก DB (getMyProfile) — โหลดหลัง login สำเร็จ
+let staffProfile   = JSON.parse(localStorage.getItem('ft_staff_profile') || 'null');  // { name, position, role, dept, branch, province }
 
 const callBackend = (action, data) => ftCallBackend(action, data);
 
@@ -103,6 +124,60 @@ let liffReady = Promise.resolve(true);
 function setMockReason(elId, err) {
   const el = $(elId);
   if (el) el.innerText = err ? 'สาเหตุ: ' + err.message : '';
+}
+
+// แยก "เซสชันหมดอายุ" ออกจากความผิดพลาดอื่น (เน็ตหลุด / backend ล่ม)
+// เพราะสองอย่างนี้ผู้ใช้ต้องทำคนละเรื่อง: อันนี้ต้อง login ใหม่ ส่วนอันนั้นแค่กดโหลดใหม่
+// liff.getIDToken() ไม่ต่ออายุ token ให้เอง มันคืนใบเดิมที่หมดอายุไปเรื่อยๆ
+// ทางเดียวคือ login ใหม่ ซึ่งผู้ใช้เดาเองไม่ได้ถ้าระบบไม่บอก
+const isAuthError = (e) => /ยืนยันตัวตน|ID Token|เข้าสู่ระบบใหม่/.test((e && e.message) || '');
+
+// ไม่เด้งไปหน้า login เองอัตโนมัติ — ถ้า login ไม่ผ่านจะวนซ้ำไม่รู้จบ
+// ให้ผู้ใช้กดเองจากปุ่มบนแถบเตือนแทน
+function setAuthExpired(on) {
+  const el = $('authBanner');
+  if (el) el.classList.toggle('hidden', !on);
+}
+
+/* ---------- แคชตั๋วในเครื่อง (stale-while-revalidate) ------------------------
+   วัดจริงแล้วรอบหนึ่งของ GAS กินเวลา 1.3-2.1 วิ ก่อนแตะฐานข้อมูลด้วยซ้ำ
+   (302 redirect ของ GAS อย่างเดียวก็ ~1-1.7 วิ) บวก liff.init อีกราว 0.7 วิ
+   -> เปิดแอปแล้วจอว่างหลายวินาทีทุกครั้ง ทั้งที่ข้อมูลส่วนใหญ่เหมือนเดิม
+
+   จึงเก็บผลลัพธ์ล่าสุดไว้ แล้ววาดทันทีตอนเปิด จากนั้นค่อยดึงของใหม่มาทับเบื้องหลัง
+   ผู้ใช้เห็นบอร์ดทันที แต่ต้องบอกให้ชัดว่ากำลังอัปเดตอยู่ ไม่งั้นจะเข้าใจผิดว่าสดแล้ว
+   ---------------------------------------------------------------------------- */
+const TICKET_CACHE_KEY = 'ft_tickets_cache';
+const TICKET_CACHE_MAX_AGE = 24 * 3600e3;   // เกิน 1 วันถือว่าเก่าเกินกว่าจะเอามาโชว์
+
+function readTicketCache() {
+  try {
+    const o = JSON.parse(localStorage.getItem(TICKET_CACHE_KEY) || 'null');
+    if (!o || !Array.isArray(o.tickets) || !o.savedAt) return null;
+    if (Date.now() - o.savedAt > TICKET_CACHE_MAX_AGE) return null;
+    // แคชผูกกับบัญชี — กันข้อมูลของคนก่อนหน้าโผล่ให้อีกคนเห็นบนเครื่องที่ใช้ร่วมกัน
+    if (o.owner && currentStaffId && o.owner !== currentStaffId) return null;
+    return o;
+  } catch (e) { return null; }
+}
+
+function writeTicketCache(list) {
+  try {
+    localStorage.setItem(TICKET_CACHE_KEY,
+      JSON.stringify({ savedAt: Date.now(), owner: currentStaffId || '', tickets: list }));
+  } catch (e) { /* โควตาเต็ม/โหมดส่วนตัว — แคชเป็นของแถม ไม่ใช่ของจำเป็น */ }
+}
+
+function clearTicketCache() {
+  try { localStorage.removeItem(TICKET_CACHE_KEY); } catch (e) {}
+}
+
+// แถบเล็กๆ บอกว่าที่เห็นอยู่เป็นของเก่าและกำลังดึงของใหม่
+function setStale(on, savedAt) {
+  const el = $('staleBar');
+  if (!el) return;
+  el.classList.toggle('hidden', !on);
+  if (on) $('staleText').innerText = 'กำลังอัปเดตข้อมูล… ที่เห็นอยู่คือข้อมูลเมื่อ ' + timeAgo(new Date(savedAt).toISOString());
 }
 
 // ---------- ข้อมูลตัวอย่าง (fallback เมื่อเรียก backend ไม่สำเร็จ) ----------
@@ -125,19 +200,40 @@ const MOCK = [
 
 // ---------- โหลดตั๋ว ----------
 async function loadTickets() {
-  $('boardLoading')?.classList.remove('hidden');
+  // วาดของที่แคชไว้ก่อน ผู้ใช้จะได้ไม่ต้องมองจอว่างระหว่างรอ liff.init + GAS (รวม ~2-4 วิ)
+  // ทำเฉพาะรอบแรกที่ยังไม่มีข้อมูลในหน้า — กดปุ่มโหลดใหม่ไม่ต้องย้อนไปแสดงของเก่า
+  const cached = tickets.length ? null : readTicketCache();
+  if (cached) {
+    tickets = cached.tickets.map(normalize);
+    usingMock = false;
+    setStale(true, cached.savedAt);
+    render();
+  } else {
+    $('boardLoading')?.classList.remove('hidden');
+  }
+
   await liffReady;   // ดูคอมเมนต์ที่ liffReady
   try {
     const res = await callBackend('getTickets', {});
     if (res && res.status === 'success' && Array.isArray(res.tickets)) {
       tickets = res.tickets.map(normalize);
       usingMock = false;
+      writeTicketCache(res.tickets);
     } else { throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend'); }
     setMockReason('mockReason', null);
+    setAuthExpired(false);
+    setStale(false);
   } catch (e) {
-    tickets = MOCK.map(normalize);
-    usingMock = true;
+    // มีของจริงจากแคชอยู่แล้ว อย่าเอาข้อมูลจำลองไปทับ — ของเก่าที่จริงยังมีประโยชน์
+    // กว่าของปลอมที่สด และผู้ใช้ยังเห็นแถบเตือนว่าอัปเดตไม่สำเร็จอยู่ดี
+    if (!cached) {
+      tickets = MOCK.map(normalize);
+      usingMock = true;
+    } else {
+      setStale(true, cached.savedAt);
+    }
     setMockReason('mockReason', e);
+    if (isAuthError(e)) setAuthExpired(true);   // เน็ตหลุดไม่ต้องขึ้น ให้ขึ้นเฉพาะเซสชันหมดอายุ
   }
   $('mockBanner').classList.toggle('hidden', !usingMock);
   render();
@@ -166,11 +262,51 @@ function normalize(t) {
    Task Board (Kanban)
    ============================================================================= */
 
+// คืนตั๋วของคอลัมน์หลังกรอง + จำนวนก่อนกรอง (เอาไว้โชว์ "5/23" ที่หัวคอลัมน์)
+function boardItems(status) {
+  const all = tickets.filter(t => t.status === status);
+  let items = all;
+
+  // คอลัมน์ปิดงานสะสมไปเรื่อยๆ ไม่มีเพดาน ตัดให้เหลือช่วงล่าสุดก่อนเป็นอย่างแรก
+  if (status === STATUS.CLOSED && closedDays > 0) {
+    const cut = Date.now() - closedDays * DAY_MS;
+    items = items.filter(t => { const c = parseT(t.closedAt); return c == null || c >= cut; });
+  }
+  if (boardCat !== 'all')  items = items.filter(t => (t.category || 'อื่นๆ') === boardCat);
+  if (boardProv !== 'all') items = items.filter(t => normProv(t.province) === boardProv);
+  // "งานของฉัน" เทียบด้วยชื่อที่แสดง เพราะ backend ส่ง assignee มาเป็นชื่อ ไม่ใช่ userId
+  if (boardMine) items = items.filter(t => t.assignee && t.assignee === currentStaff);
+
+  const q = boardSearch.trim().toLowerCase();
+  if (q) items = items.filter(t =>
+    [t.code, t.detail, t.reporter, t.assignee, t.branch, t.province, t.category]
+      .some(v => String(v || '').toLowerCase().includes(q)));
+
+  // เรียงตามเวลาที่ "ตรงกับสถานะนั้น" ไม่ใช่เวลาแจ้งเสมอไป
+  // (คอลัมน์เสร็จสิ้นควรเรียงตามเวลาปิด ไม่ใช่เวลาที่แจ้งเข้ามา)
+  const key = (t) => parseT(
+    t.status === STATUS.CLOSED      ? (t.closedAt   || t.createdAt) :
+    t.status === STATUS.IN_PROGRESS ? (t.acceptedAt || t.createdAt) : t.createdAt) || 0;
+  items = items.slice().sort((a, b) => boardSort === 'new' ? key(b) - key(a) : key(a) - key(b));
+
+  return { items, total: all.length };
+}
+
+// เปลี่ยนตัวกรองแล้วต้องรีเซ็ตจำนวนที่ทยอยวาดด้วย ไม่งั้นผลลัพธ์ชุดใหม่จะถูกตัดด้วยเพดานเก่า
+function applyBoardFilter() { colLimit = {}; render(); }
+
 function render() {
   const board = $('board');
   board.innerHTML = '';
+  board.classList.toggle('board-compact', boardCompact);
+  let shown = 0, grand = 0;
   for (const col of COLUMNS) {
-    const items = tickets.filter(t => t.status === col.status);
+    const r = boardItems(col.status);
+    const items = r.items;
+    const limit = colLimit[col.status] || BOARD_PAGE;
+    const visible = items.slice(0, limit);
+    shown += items.length;
+    grand += r.total;
     const colEl = document.createElement('div');
     // มือถือ: กว้าง 86vw ให้เห็นคอลัมน์ถัดไปโผล่มานิดนึง = บอกใบ้ว่าปัดต่อได้
     // (ถ้า fix 320px บนจอ 360px จะเต็มพอดีจนดูเหมือนไม่มีอะไรต่อ)
@@ -186,12 +322,25 @@ function render() {
           <span class="w-2.5 h-2.5 rounded-full shrink-0 ${col.dot}"></span><span class="truncate">${col.title}</span>
           <span class="text-slate-400 font-normal text-sm hidden sm:inline">(${col.en})</span>
         </div>
-        <span class="text-sm font-bold text-slate-400 shrink-0">${items.length}</span>
+        <span class="text-sm font-bold shrink-0 ${items.length !== r.total ? 'text-blue-600' : 'text-slate-400'}">${items.length !== r.total ? items.length + '/' + r.total : r.total}</span>
       </div>
       <div class="col-scroll flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-3" data-drop="${col.status}"></div>
     `;
     const list = colEl.querySelector('[data-drop]');
-    items.forEach(t => list.appendChild(cardEl(t)));
+    if (!items.length) {
+      // แยกสองกรณีให้ชัด ไม่งั้นผู้ใช้จะนึกว่าระบบพังทั้งที่แค่กรองจนไม่เหลือ
+      list.innerHTML = `<div class="text-center text-xs text-slate-400 py-6">${
+        r.total ? 'ไม่มีงานที่ตรงกับตัวกรอง' : 'ยังไม่มีงานในคอลัมน์นี้'}</div>`;
+    } else {
+      visible.forEach(t => list.appendChild(cardEl(t)));
+      if (items.length > visible.length) {
+        const more = document.createElement('button');
+        more.className = 'shrink-0 w-full text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg py-2.5 min-h-[40px]';
+        more.textContent = `แสดงเพิ่ม (เหลืออีก ${items.length - visible.length})`;
+        more.addEventListener('click', () => { colLimit[col.status] = limit + BOARD_PAGE; render(); });
+        list.appendChild(more);
+      }
+    }
 
     // drag targets
     list.addEventListener('dragover', (e) => { e.preventDefault(); colEl.classList.add('col-over'); });
@@ -204,14 +353,93 @@ function render() {
     });
     board.appendChild(colEl);
   }
+  syncBoardTools(shown, grand);
   // บอร์ดกับแดชบอร์ดใช้ tickets ชุดเดียวกัน — แต่วาดแดชบอร์ดเฉพาะตอนที่มองเห็น
   // (switchView จะวาดใหม่เสมอเมื่อสลับมา จึงไม่มีทางเห็นข้อมูลเก่า)
   if (!$('viewDashboard').classList.contains('hidden')) renderDashboard();
 }
 
+// เติมตัวเลือกจากข้อมูลจริง ไม่ hardcode เพราะหมวดหมู่/พื้นที่มาจาก DB และเพิ่มได้
+// เขียนทับเฉพาะตอนรายการเปลี่ยนจริง ไม่งั้น dropdown จะปิดตัวเองระหว่างผู้ใช้กำลังเลือก
+function fillSelect(el, values, cur, allLabel) {
+  if (!el) return;
+  const opts = ['all', ...values];
+  const sig = opts.join('|');
+  if (el.dataset.sig !== sig) {
+    el.dataset.sig = sig;
+    el.innerHTML = opts.map(v =>
+      `<option value="${escapeHtml(v)}">${v === 'all' ? allLabel : escapeHtml(v)}</option>`).join('');
+  }
+  el.value = cur;
+}
+
+const toggleBtn = (el, on) => {
+  if (!el) return;
+  el.classList.toggle('bg-blue-600', on);
+  el.classList.toggle('text-white', on);
+  el.classList.toggle('bg-slate-100', !on);
+  el.classList.toggle('text-slate-600', !on);
+};
+
+function syncBoardTools(shown, grand) {
+  fillSelect($('boardCat'),  [...new Set(tickets.map(t => t.category || 'อื่นๆ'))].sort(), boardCat,  'ทุกหมวดหมู่');
+  fillSelect($('boardProv'), [...new Set(tickets.map(t => normProv(t.province)))].sort(),  boardProv, 'ทุกพื้นที่');
+  const cnt = $('boardCount');
+  if (cnt) cnt.textContent = shown === grand ? `${grand} งาน` : `แสดง ${shown} จาก ${grand} งาน`;
+  toggleBtn($('boardMine'), boardMine);
+  toggleBtn($('boardCompact'), boardCompact);
+  const mine = $('boardMine');
+  if (mine) {                       // ยังไม่ login ก็ไม่รู้ว่า "ของฉัน" หมายถึงใคร
+    mine.disabled = !currentStaff;
+    mine.classList.toggle('opacity-40', !currentStaff);
+    mine.title = currentStaff ? '' : 'ต้องเข้าสู่ระบบ LINE ก่อน';
+  }
+  const cd = $('boardClosedDays');
+  if (cd) cd.value = String(closedDays);
+  const sc = $('boardSort');
+  if (sc) sc.value = boardSort;
+}
+
+function initBoardTools() {
+  const s = $('boardSearch');
+  if (s) {
+    let timer = null;
+    s.addEventListener('input', () => {            // debounce: อย่าวาดบอร์ดใหม่ทุกตัวอักษร
+      clearTimeout(timer);
+      timer = setTimeout(() => { boardSearch = s.value; applyBoardFilter(); }, 200);
+    });
+  }
+  $('boardCat')?.addEventListener('change', (e) => { boardCat = e.target.value; applyBoardFilter(); });
+  $('boardProv')?.addEventListener('change', (e) => { boardProv = e.target.value; applyBoardFilter(); });
+  $('boardSort')?.addEventListener('change', (e) => { boardSort = e.target.value; applyBoardFilter(); });
+  $('boardClosedDays')?.addEventListener('change', (e) => {
+    closedDays = parseInt(e.target.value, 10) || 0;
+    localStorage.setItem('ft_closed_days', String(closedDays));
+    applyBoardFilter();
+  });
+  $('boardMine')?.addEventListener('click', () => { boardMine = !boardMine; applyBoardFilter(); });
+  $('boardCompact')?.addEventListener('click', () => {
+    boardCompact = !boardCompact;
+    localStorage.setItem('ft_board_compact', boardCompact ? '1' : '0');
+    applyBoardFilter();
+  });
+  $('boardReset')?.addEventListener('click', () => {
+    boardSearch = ''; boardCat = 'all'; boardProv = 'all'; boardMine = false; boardSort = 'new';
+    if (s) s.value = '';
+    applyBoardFilter();
+  });
+}
+
 function cardEl(t) {
   const el = document.createElement('div');
-  el.className = (IS_TOUCH ? '' : 'card-drag ') + 'bg-white rounded-lg border border-slate-200 p-3.5 shadow-sm hover:shadow-md transition-shadow';
+  // งานที่ยังไม่ปิดและค้างเกินเกณฑ์ (agingDays จากหน้าตั้งค่า) ต้องสะดุดตาบนบอร์ด
+  // ไม่งั้นพอคิวยาว งานเก่าจะจมอยู่ล่างสุดโดยไม่มีใครสังเกต
+  const ageDays = t.status === STATUS.CLOSED ? 0
+    : (Date.now() - (parseT(t.createdAt) || Date.now())) / DAY_MS;
+  const isOld = ageDays >= agingDays;
+
+  el.className = (IS_TOUCH ? '' : 'card-drag ') + 'tk-card bg-white rounded-lg border border-slate-200 p-3.5 shadow-sm hover:shadow-md transition-shadow'
+    + (isOld ? ' tk-old' : '');
   el.draggable = !IS_TOUCH;   // ดูเหตุผลที่ IS_TOUCH
   el.dataset.id = t.id;
 
@@ -234,17 +462,20 @@ function cardEl(t) {
 
   el.innerHTML = `
     <div class="flex items-start justify-between gap-2 mb-1.5">
-      <span class="font-bold text-slate-700">${escapeHtml(t.code)}</span>
-      ${t.category ? `<span class="text-[11px] px-2 py-0.5 rounded-full ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}
+      <span class="font-bold text-slate-700 inline-flex items-center gap-1.5 min-w-0">
+        <span class="truncate">${escapeHtml(t.code)}</span>
+        ${isOld ? `<span class="tk-age shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">ค้าง ${Math.floor(ageDays)} วัน</span>` : ''}
+      </span>
+      ${t.category ? `<span class="tk-cat text-[11px] px-2 py-0.5 rounded-full shrink-0 ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}
     </div>
-    <p class="text-sm text-slate-700 leading-snug mb-3">${escapeHtml(t.detail)}</p>
-    <div class="flex items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
+    <p class="tk-detail text-sm text-slate-700 leading-snug mb-3">${escapeHtml(t.detail)}</p>
+    <div class="tk-meta flex items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
       <span class="inline-flex items-center gap-1 min-w-0">
         <span class="shrink-0">👤</span><span class="truncate">${escapeHtml(t.assignee || t.reporter)}</span>
       </span>
       ${action}
     </div>
-    ${timeLine ? `<div class="text-[11px] text-slate-400 mt-1.5 inline-flex items-center gap-1">🕒 ${timeLine}</div>` : ''}
+    ${timeLine ? `<div class="tk-time text-[11px] text-slate-400 mt-1.5 inline-flex items-center gap-1">🕒 ${timeLine}</div>` : ''}
   `;
 
   el.addEventListener('dragstart', (e) => {
@@ -299,6 +530,8 @@ async function moveTicket(id, toStatus, resolutionText) {
       t.assignee = res.assignee;
       render();
     }
+    // อัปเดตแคชให้ตรงกับที่บันทึกจริง ไม่งั้นเปิดแอปรอบหน้าจะเห็นสถานะเก่าแวบหนึ่ง
+    writeTicketCache(tickets);
     // บันทึกวิธีแก้ไขเข้า Knowledge Base — เกิดขึ้นหลังปิดงานสำเร็จเท่านั้น และไม่ทำให้
     // การปิดงาน "ล้มเหลว" ถ้าขั้นนี้พังต่อ (คนละ resource กัน แค่แจ้งเตือนเบาๆ พอ)
     if (toStatus === STATUS.CLOSED && resolutionText) {
@@ -319,13 +552,57 @@ async function moveTicket(id, toStatus, resolutionText) {
 
 // ---------- เจ้าหน้าที่ปัจจุบัน (ตัวตนมาจาก LINE เท่านั้น) ----------
 function setStaffUI() {
+  const avatar = $('staffAvatar');
+  const nameEl = $('staffName');
+  const infoEl = $('staffInfo');
   if (currentStaff) {
-    $('staffName').innerText = currentStaff;
-    $('staffName').classList.replace('text-slate-600','text-slate-800');
-    $('staffAvatar').innerText = currentStaff.trim().charAt(0) || '?';
+    // ชื่อที่แสดง: ใช้ชื่อจริงจาก DB ถ้ามี ไม่งั้น fallback เป็น LINE displayName
+    const displayName = (staffProfile && staffProfile.name) || currentStaff;
+    nameEl.innerText = displayName;
+    nameEl.classList.replace('text-slate-600','text-slate-800');
+    // ข้อมูลเพิ่มเติมใต้ชื่อ (ตำแหน่ง · สังกัด)
+    if (infoEl) {
+      const parts = [];
+      if (staffProfile && staffProfile.position) parts.push(staffProfile.position);
+      if (staffProfile && staffProfile.branch) parts.push(staffProfile.branch);
+      if (parts.length) { infoEl.innerText = parts.join(' · '); infoEl.classList.remove('hidden'); }
+      else infoEl.classList.add('hidden');
+    }
+    // รูปโปรไฟล์จาก LINE
+    if (staffPicUrl) {
+      avatar.innerHTML = `<img src="${escapeHtml(staffPicUrl)}" alt="" class="w-full h-full rounded-full object-cover">`;
+    } else {
+      avatar.innerHTML = '';
+      avatar.innerText = displayName.trim().charAt(0) || '?';
+    }
   } else {
-    $('staffName').innerText = 'เข้าสู่ระบบ LINE';
-    $('staffAvatar').innerText = '?';
+    nameEl.innerText = 'เข้าสู่ระบบ LINE';
+    if (infoEl) infoEl.classList.add('hidden');
+    avatar.innerHTML = '';
+    avatar.innerText = '?';
+  }
+}
+
+// ---------- ดึงข้อมูลบัญชีจาก DB (ชื่อจริง, ตำแหน่ง, สังกัด) ----------
+// เรียกหลัง LIFF login สำเร็จ — ข้อมูลนี้แทบไม่เปลี่ยน จึงแคชไว้ใน localStorage
+// ถ้าดึงไม่ได้ก็ไม่เป็นไร แค่แสดง LINE displayName แทน
+async function loadMyProfile() {
+  try {
+    const res = await callBackend('getMyProfile', {});
+    if (res && res.status === 'success' && res.profile) {
+      staffProfile = res.profile;
+      localStorage.setItem('ft_staff_profile', JSON.stringify(staffProfile));
+      // อัปเดตชื่อที่ใช้จับคู่ "งานของฉัน" บนบอร์ดด้วย (ถ้า DB มีชื่อจริง)
+      if (staffProfile.name) {
+        currentStaff = staffProfile.name;
+        localStorage.setItem('ft_staff', currentStaff);
+      }
+      setStaffUI();
+      refreshIdentityDependentViews();
+    }
+  } catch (e) {
+    // ไม่ fatal — แค่ topbar จะโชว์ LINE displayName แทนชื่อจริง
+    console.warn('loadMyProfile:', e.message);
   }
 }
 
@@ -658,10 +935,12 @@ async function loadUsers() {
       usingMockUsers = false;
     } else { throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend'); }
     setMockReason('usersMockReason', null);
+    setAuthExpired(false);
   } catch (e) {
     users = MOCK_USERS.map(normalizeUser);
     usingMockUsers = true;
     setMockReason('usersMockReason', e);
+    if (isAuthError(e)) setAuthExpired(true);
   }
   usersLoaded = true;
   renderUsers();
@@ -816,10 +1095,12 @@ async function loadKB() {
       usingMockKb = false;
     } else { throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend'); }
     setMockReason('kbMockReason', null);
+    setAuthExpired(false);
   } catch (e) {
     kbArticles = MOCK_KB.map(normalizeKb);
     usingMockKb = true;
     setMockReason('kbMockReason', e);
+    if (isAuthError(e)) setAuthExpired(true);
   }
   kbLoaded = true;
   renderKB();
@@ -860,7 +1141,11 @@ function renderKB() {
           <span class="font-bold text-sm" style="color:var(--ink)">${escapeHtml(a.ticketCode)}</span>
           <span class="text-[11px] px-2 py-0.5 rounded-full ${catColor(a.category)}">${escapeHtml(a.category)}</span>
         </div>
-        ${a.pdfUrl ? `<button data-pdf="${a.id}" class="text-xs text-blue-600 hover:underline whitespace-nowrap">📄 เอกสารต้นฉบับ</button>` : ''}
+        <div class="flex items-center gap-2 shrink-0">
+          ${a.pdfUrl ? `<button data-pdf="${a.id}" class="text-xs text-blue-600 hover:underline whitespace-nowrap">📄 เอกสารต้นฉบับ</button>` : ''}
+          <button data-edit="${a.id}" class="text-xs text-slate-500 hover:text-blue-600 min-h-[32px] px-1.5" title="แก้ไข">✏️</button>
+          <button data-del="${a.id}" class="text-xs text-slate-500 hover:text-red-600 min-h-[32px] px-1.5" title="ลบ">🗑️</button>
+        </div>
       </div>
       ${a.detail ? `<div class="text-xs mb-1.5" style="color:var(--ink-muted)">อาการ: ${escapeHtml(a.detail)}</div>` : ''}
       <p class="text-sm leading-relaxed whitespace-pre-wrap" style="color:var(--ink-2)">${escapeHtml(a.resolution)}</p>
@@ -868,8 +1153,70 @@ function renderKB() {
     `;
     const pdfBtn = el.querySelector('[data-pdf]');
     if (pdfBtn) pdfBtn.addEventListener('click', () => openPdf({ code:a.ticketCode, pdfUrl:a.pdfUrl }));
+    const editBtn = el.querySelector('[data-edit]');
+    if (editBtn) editBtn.addEventListener('click', () => openKbEdit(a));
+    const delBtn = el.querySelector('[data-del]');
+    if (delBtn) delBtn.addEventListener('click', () => deleteKbArticle(a));
     box.appendChild(el);
   });
+}
+
+// ---------- แก้ไขบทความ KB ----------
+function openKbEdit(article) {
+  pendingKbEditId = article.id;
+  $('kbEditTicketInfo').innerText = article.ticketCode + ' — ' + (article.detail || '(ไม่มีรายละเอียด)');
+  $('kbEditResolution').value = article.resolution;
+  $('kbEditModal').classList.remove('hidden');
+  $('kbEditResolution').focus();
+}
+function cancelKbEdit() {
+  $('kbEditModal').classList.add('hidden');
+  pendingKbEditId = null;
+}
+async function saveKbEdit() {
+  const kbId = pendingKbEditId;
+  const text = $('kbEditResolution').value.trim();
+  if (!kbId) return;
+  if (!text) { alert('วิธีแก้ไขปัญหาห้ามว่าง'); return; }
+
+  // optimistic update
+  const a = kbArticles.find(x => x.id === kbId);
+  const prevText = a ? a.resolution : '';
+  if (a) a.resolution = text;
+  cancelKbEdit();
+  renderKB();
+
+  if (usingMockKb) return;
+
+  try {
+    const res = await callBackend('updateKnowledgeArticle', { kbId, resolutionText: text });
+    if (!res || res.status !== 'success') throw new Error((res && res.message) || 'อัปเดตไม่สำเร็จ');
+  } catch (e) {
+    if (a) a.resolution = prevText;  // revert
+    renderKB();
+    alert('❌ แก้ไขบทความไม่สำเร็จ: ' + e.message);
+  }
+}
+
+// ---------- ลบบทความ KB ----------
+async function deleteKbArticle(article) {
+  if (!confirm(`ลบบทความ ${article.ticketCode} ออกจากฐานความรู้?\n\nตั๋วต้นฉบับจะไม่ถูกกระทบ แต่วิธีแก้ไขปัญหานี้จะหายไปถาวร`)) return;
+
+  // optimistic remove
+  const idx = kbArticles.findIndex(x => x.id === article.id);
+  const removed = idx >= 0 ? kbArticles.splice(idx, 1)[0] : null;
+  renderKB();
+
+  if (usingMockKb) return;
+
+  try {
+    const res = await callBackend('deleteKnowledgeArticle', { kbId: article.id });
+    if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ลบไม่สำเร็จ');
+  } catch (e) {
+    if (removed && idx >= 0) kbArticles.splice(idx, 0, removed);  // revert
+    renderKB();
+    alert('❌ ลบบทความไม่สำเร็จ: ' + e.message);
+  }
 }
 
 /* =============================================================================
@@ -888,14 +1235,24 @@ function renderSettings() {
     $('settingsLoginBtn').addEventListener('click', ensureLogin);
     return;
   }
+  const displayName = (staffProfile && staffProfile.name) || currentStaff || '-';
+  const avatarHtml = staffPicUrl
+    ? `<img src="${escapeHtml(staffPicUrl)}" alt="" class="w-12 h-12 rounded-full object-cover shrink-0">`
+    : `<span class="w-12 h-12 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center shrink-0">${escapeHtml(displayName.trim().charAt(0) || '?')}</span>`;
+  const sp = staffProfile || {};
+  const role = me ? me.role : (sp.role ? roleOf(sp.role) : null);
+  const infoParts = [sp.position, sp.dept, sp.branch].filter(Boolean);
   box.innerHTML = `
     <div class="flex items-center gap-3">
-      <span class="w-10 h-10 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center shrink-0">${escapeHtml(currentStaff.trim().charAt(0) || '?')}</span>
-      <div class="min-w-0">
-        <div class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(currentStaff || '-')}</div>
-        <div class="text-[11px] truncate" style="color:var(--ink-muted)">${escapeHtml(currentStaffId)}</div>
+      ${avatarHtml}
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(displayName)}</span>
+          ${role ? roleBadge(role) : ''}
+        </div>
+        ${infoParts.length ? `<div class="text-xs truncate mt-0.5" style="color:var(--ink-2)">${escapeHtml(infoParts.join(' · '))}</div>` : ''}
+        <div class="text-[10px] truncate mt-0.5" style="color:var(--ink-muted)">LINE: ${escapeHtml(currentStaffId)}</div>
       </div>
-      ${me ? roleBadge(me.role) : ''}
     </div>
     <button id="settingsLogoutBtn" class="mt-3 px-3 py-1.5 rounded-lg text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50">ออกจากระบบ</button>
   `;
@@ -906,6 +1263,9 @@ function doLogout() {
   if (!confirm('ออกจากระบบ LINE บนเบราว์เซอร์นี้?')) return;
   localStorage.removeItem('ft_staff');
   localStorage.removeItem('ft_staff_id');
+  localStorage.removeItem('ft_staff_pic');
+  localStorage.removeItem('ft_staff_profile');
+  clearTicketCache();   // ตั๋วที่แคชไว้เป็นข้อมูลของหน่วยงาน ห้ามค้างให้คนถัดไปเห็น
   try { if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()) liff.logout(); } catch (e) { /* ไม่ต้องบล็อกถ้า logout ฝั่ง LIFF พัง */ }
   location.reload();
 }
@@ -920,6 +1280,10 @@ function initSettingsForm() {
     $('agingSavedNote').classList.remove('hidden');
     setTimeout(() => $('agingSavedNote').classList.add('hidden'), 1500);
     if (currentView === 'dashboard' || !$('viewDashboard').classList.contains('hidden')) renderDashboard();
+    // บอร์ดใช้ค่านี้ตัดสินว่าการ์ดไหน "ค้าง" ด้วย (ขีดแดง + ป้ายค้าง N วัน)
+    // ต้องวาดใหม่ทันทีแม้ตอนนี้จะอยู่หน้าตั้งค่า ไม่งั้นพอสลับกลับไปบอร์ดจะเห็นเกณฑ์เก่า
+    // (switchView ไม่ได้เรียก render() ตอนกลับเข้าบอร์ด)
+    if (tickets.length) render();
   });
 }
 
@@ -931,6 +1295,7 @@ function switchView(v) {
   if (!VIEWS[v]) v = 'board';   // กันค่าเพี้ยนใน localStorage (เช่นจากเวอร์ชันอนาคต) ทำหน้า crash
   currentView = v;
   $('viewBoard').classList.toggle('hidden', v !== 'board');
+  $('boardTools').classList.toggle('hidden', v !== 'board');   // แถบกรองอยู่นอก #viewBoard ต้องซ่อนเอง
   $('viewDashboard').classList.toggle('hidden', v !== 'dashboard');
   $('viewKB').classList.toggle('hidden', v !== 'kb');
   $('viewUsers').classList.toggle('hidden', v !== 'users');
@@ -963,6 +1328,9 @@ $('closeCancelBtn').addEventListener('click', cancelClose);
 $('closeSkipBtn').addEventListener('click', () => finishClose(''));
 $('closeConfirmBtn').addEventListener('click', () => finishClose($('closeResolution').value.trim()));
 $('closeModal').addEventListener('click', (e) => { if (e.target === $('closeModal')) cancelClose(); });
+$('kbEditCancelBtn').addEventListener('click', cancelKbEdit);
+$('kbEditSaveBtn').addEventListener('click', saveKbEdit);
+$('kbEditModal').addEventListener('click', (e) => { if (e.target === $('kbEditModal')) cancelKbEdit(); });
 
 // หมุนจอ/ย่อขยายหน้าต่าง: กราฟเส้นคำนวณ viewBox จากความกว้างจริง ต้องวาดใหม่
 // (การ์ด/ตารางเป็น CSS ล้วน ปรับเองอยู่แล้ว) — debounce กันวาดรัวตอนลากขอบหน้าต่าง
@@ -997,10 +1365,15 @@ async function setupLiff() {
       const p = await liff.getProfile();
       currentStaffId = p.userId;        // ค่านี้แหละที่ลง IT_In_Charge ได้จริง
       currentStaff = p.displayName;
+      staffPicUrl = p.pictureUrl || '';
       localStorage.setItem('ft_staff', currentStaff);
       localStorage.setItem('ft_staff_id', currentStaffId);
+      localStorage.setItem('ft_staff_pic', staffPicUrl);
       setStaffUI();
       refreshIdentityDependentViews();
+
+      // ดึงข้อมูลจาก DB (ชื่อจริง, ตำแหน่ง, สังกัด) — ไม่บล็อก UI เรียกเบื้องหลัง
+      loadMyProfile();
     }
   } catch (e) {
     // login พังไม่ควรทำให้ดูบอร์ดไม่ได้ — ยังดูได้ แต่กดรับงานจะโดนเตือนให้ login ก่อน
@@ -1015,6 +1388,8 @@ async function setupLiff() {
 async function init() {
   setStaffUI();
   initSettingsForm();
+  initBoardTools();
+  $('authReloginBtn')?.addEventListener('click', ensureLogin);
   liffReady = setupLiff();   // เริ่ม login ทันที แต่ไม่บล็อกการวาดหน้า — loadX() จะ await เอง
   switchView(localStorage.getItem('ft_view') || 'board');   // จำ view ล่าสุดที่เปิดไว้
   if (await liffReady) loadTickets();

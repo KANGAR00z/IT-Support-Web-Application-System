@@ -56,7 +56,10 @@ function doPost(e) {
       getUsers: getUsers,
       updateUserRole: updateUserRole,
       getKnowledgeBase: getKnowledgeBase,
-      addKnowledgeArticle: addKnowledgeArticle
+      addKnowledgeArticle: addKnowledgeArticle,
+      updateKnowledgeArticle: updateKnowledgeArticle,
+      deleteKnowledgeArticle: deleteKnowledgeArticle,
+      getMyProfile: getMyProfile
     };
     const handler = handlers[request.action];
     if (!handler) return jsonOutput({ status: 'error', message: 'ไม่พบคำสั่ง Action: ' + request.action });
@@ -89,15 +92,47 @@ const ACL = {
   getTickets:          ['IT', 'Admin'],
   acceptTicket:        ['IT', 'Admin'],
   updateTicketStatus:  ['IT', 'Admin'],
-  getKnowledgeBase:    ['IT', 'Admin'],
-  addKnowledgeArticle: ['IT', 'Admin'],
-  getUsers:            ['Admin'],
+  getKnowledgeBase:       ['IT', 'Admin'],
+  addKnowledgeArticle:    ['IT', 'Admin'],
+  updateKnowledgeArticle: ['IT', 'Admin'],
+  deleteKnowledgeArticle: ['IT', 'Admin'],
+  getMyProfile:            ['IT', 'Admin'],
+  getUsers:               ['Admin'],
   updateUserRole:      ['Admin'],
 };
+
+/* ---------- แคชระดับสคริปต์: ตัดงานซ้ำที่ทำทุก request ------------------------
+   เดิมทุก request ที่ต้องตรวจสิทธิ์ทำของช้า 2 อย่าง
+     1) ยิง UrlFetch ไปถาม LINE ว่า token ของจริงไหม  (ข้ามเน็ต)
+     2) เปิด connection ไป Postgres เพื่ออ่าน Role หนึ่งครั้ง
+        แล้ว handler ก็เปิด connection ของตัวเองอีกครั้ง = 2 connection ต่อ 1 request
+   ทั้งสองอย่างแทบไม่เปลี่ยนระหว่างการใช้งานรอบเดียว จึงแคชไว้ได้
+   ---------------------------------------------------------------------------- */
+const CACHE_TTL_TOKEN = 300;   // วินาที
+const CACHE_TTL_ROLE  = 300;
+
+function cache_() { return CacheService.getScriptCache(); }
+
+// ไม่ใช้ token ทั้งใบเป็น key: ยาวเกิน 250 ตัวอักษรที่ CacheService รับ และไม่ควรเก็บของดิบ
+function tokenKey_(idToken) {
+  const d = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, idToken);
+  return 'tk_' + Utilities.base64Encode(d);
+}
 
 // ยิงถาม LINE ว่า idToken ของจริงไหม — คืน { ok, userId }
 function verifyIdToken_(idToken) {
   if (!idToken) return { ok: false };
+
+  // แคชช่วยข้าม "การยิงถาม" เท่านั้น ไม่ได้ยืดอายุ token — วันหมดอายุยังเช็คเองทุกครั้ง
+  const key = tokenKey_(idToken);
+  const hit = cache_().get(key);
+  if (hit) {
+    const c = JSON.parse(hit);
+    if (c.exp && (Number(c.exp) * 1000) > Date.now()) return { ok: true, userId: c.sub };
+    cache_().remove(key);
+    return { ok: false };
+  }
+
   const channelId = PropertiesService.getScriptProperties().getProperty('LIFF_CHANNEL_ID');
   if (!channelId) throw new Error('ยังไม่ได้ตั้ง Script Property: LIFF_CHANNEL_ID');
 
@@ -111,18 +146,35 @@ function verifyIdToken_(idToken) {
   const p = JSON.parse(res.getContentText());
   if (String(p.aud) !== String(channelId)) return { ok: false };          // ของ channel เราจริง
   if (p.exp && (Number(p.exp) * 1000) < Date.now()) return { ok: false };  // กันเหนียวเรื่องหมดอายุ
+
+  // เก็บแค่ sub กับ exp พอ ไม่เก็บตัว token
+  cache_().put(key, JSON.stringify({ sub: p.sub, exp: p.exp }), CACHE_TTL_TOKEN);
   return { ok: true, userId: p.sub };   // sub = LINE userId ตัวจริง
 }
 
 // อ่าน role จาก DB — คืน 'Staff'/'IT'/'Admin' หรือ null (ไม่มีใน USER / DB ล่ม -> fail-closed)
 function getUserRole_(userId) {
+  const key = 'role_' + userId;
+  const hit = cache_().get(key);
+  if (hit !== null && hit !== undefined) return hit === '-' ? null : hit;   // '-' = ไม่มีบัญชีในระบบ
+
   const r = withConn_(function (conn) {
     const stmt = conn.prepareStatement('SELECT "Role" FROM "USER" WHERE "LINE_User_ID" = ?');
     stmt.setString(1, userId);
     const rs = stmt.executeQuery();
     return { role: rs.next() ? rs.getString('Role') : null };
   });
-  return (r && typeof r.role !== 'undefined') ? r.role : null;  // DB error -> withConn_ คืน {status:'error'} -> null
+  // DB error -> withConn_ คืน {status:'error'} ไม่มี field role -> null (fail-closed)
+  // และ "ห้ามแคช" กรณีนี้ ไม่งั้น DB สะดุดแวบเดียวจะทำให้ผู้ใช้ถูกปฏิเสธยาว 5 นาที
+  if (!r || typeof r.role === 'undefined') return null;
+
+  cache_().put(key, r.role || '-', CACHE_TTL_ROLE);
+  return r.role;
+}
+
+// ต้องเรียกทุกครั้งที่แก้ Role ไม่งั้นสิทธิ์ใหม่จะยังไม่มีผลจนกว่าแคชจะหมดอายุ
+function invalidateRoleCache_(userId) {
+  if (userId) cache_().remove('role_' + userId);
 }
 
 // ประตูหลัก: verify token + เช็ค ACL — คืน { ok, userId, role } หรือ { ok:false, message }
@@ -438,6 +490,38 @@ function getUsers(data) {
 }
 
 // ==========================================
+// ดึงข้อมูลบัญชีของตัวเอง (ชื่อจริง, ตำแหน่ง, สังกัด, บทบาท)
+// ใช้แสดง Topbar + หน้า Settings — ไม่ต้องรอ getUsers (Admin-only)
+// ==========================================
+function getMyProfile(data, auth) {
+  return withConn_(function (conn) {
+    const sql = `
+      SELECT u."Full_Name", u."Position", u."Role",
+             d."Dept_Name", b."Branch_Name", b."Province"
+      FROM "USER" u
+      LEFT JOIN "DEPARTMENT" d ON d."Dept_ID"   = u."Dept_ID"
+      LEFT JOIN "BRANCH"     b ON b."Branch_ID" = d."Branch_ID"
+      WHERE u."LINE_User_ID" = ?
+    `;
+    const stmt = conn.prepareStatement(sql);
+    stmt.setString(1, auth.userId);
+    const rs = stmt.executeQuery();
+    if (!rs.next()) return { status: 'success', profile: null };
+    return {
+      status: 'success',
+      profile: {
+        name: strOrNull_(rs, 'Full_Name') || '',
+        position: strOrNull_(rs, 'Position') || '',
+        role: strOrNull_(rs, 'Role') || '',
+        dept: strOrNull_(rs, 'Dept_Name') || '',
+        branch: strOrNull_(rs, 'Branch_Name') || '',
+        province: strOrNull_(rs, 'Province') || ''
+      }
+    };
+  });
+}
+
+// ==========================================
 // เปลี่ยนบทบาทผู้ใช้ (โมดูล Users) — userId = เป้าหมาย, ผู้กระทำคือ auth (ACL ยืนยัน Admin แล้ว)
 // ==========================================
 function updateUserRole(data, auth) {
@@ -468,6 +552,7 @@ function updateUserRole(data, auth) {
     stmt.setString(2, targetId);
 
     if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบผู้ใช้คนนี้ในระบบ' };
+    invalidateRoleCache_(targetId);   // ไม่ล้าง = สิทธิ์ใหม่ยังไม่มีผลนานถึง 5 นาที
     return { status: 'success', role: dbRole };
   });
 }
@@ -532,5 +617,42 @@ function addKnowledgeArticle(data, auth) {
 
     if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบตั๋ว TK-' + ticketId };
     return { status: 'success' };
+  });
+}
+
+// ==========================================
+// แก้ไขบทความฐานความรู้ (แก้วิธีแก้ไขปัญหาที่พิมพ์ผิด/ไม่ครบ)
+// ==========================================
+function updateKnowledgeArticle(data, auth) {
+  return withConn_(function (conn) {
+    const kbId = parseInt(data && data.kbId, 10);
+    const resolutionText = String((data && data.resolutionText) || '').trim();
+    if (!kbId)           return { status: 'error', message: 'ไม่ได้ระบุ kbId' };
+    if (!resolutionText) return { status: 'error', message: 'วิธีแก้ไขปัญหาห้ามว่าง' };
+
+    const stmt = conn.prepareStatement(
+      'UPDATE "KNOWLEDGE_BASE" SET "Resolution_Text" = ? WHERE "KB_ID" = ?'
+    );
+    stmt.setString(1, resolutionText);
+    stmt.setInt(2, kbId);
+
+    if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบบทความ KB-' + kbId };
+    return { status: 'success', message: 'แก้ไขบทความ KB-' + kbId + ' สำเร็จ' };
+  });
+}
+
+// ==========================================
+// ลบบทความฐานความรู้ (ลบถาวร ไม่ได้กระทบตั๋วต้นฉบับ)
+// ==========================================
+function deleteKnowledgeArticle(data, auth) {
+  return withConn_(function (conn) {
+    const kbId = parseInt(data && data.kbId, 10);
+    if (!kbId) return { status: 'error', message: 'ไม่ได้ระบุ kbId' };
+
+    const stmt = conn.prepareStatement('DELETE FROM "KNOWLEDGE_BASE" WHERE "KB_ID" = ?');
+    stmt.setInt(1, kbId);
+
+    if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบบทความ KB-' + kbId };
+    return { status: 'success', message: 'ลบบทความ KB-' + kbId + ' สำเร็จ' };
   });
 }
