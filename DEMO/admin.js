@@ -36,7 +36,7 @@ const VIEWS = {
   board:     { title:'ตารางงาน IT Support (Task Board)',
                sub: IS_TOUCH ? 'ปัดซ้าย-ขวาเพื่อดูคอลัมน์อื่น · แตะปุ่มบนการ์ดเพื่อเปลี่ยนสถานะ'
                              : 'จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ' },
-  kb:        { title:'ฐานความรู้ (Knowledge Base)', sub:'รวมวิธีแก้ไขปัญหาจากตั๋วที่ปิดงานแล้ว' },
+  kb:        { title:'ประวัติการแจ้งซ่อม', sub:'รวมประวัติและวิธีแก้ไขปัญหาจากตั๋วที่ปิดงานแล้ว' },
   users:     { title:'ผู้ใช้งาน (Users)', sub:'จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด' },
   settings:  { title:'ตั้งค่า (Settings)', sub:'บัญชีของฉันและค่าตั้งต้นของแดชบอร์ด' },
 };
@@ -540,7 +540,7 @@ async function moveTicket(id, toStatus, resolutionText) {
         if (!kbRes || kbRes.status !== 'success') throw new Error((kbRes && kbRes.message) || 'ไม่ทราบสาเหตุ');
         kbLoaded = false;   // บังคับให้โหลดใหม่ครั้งถัดไปที่เข้าหน้า Knowledge Base
       } catch (kbErr) {
-        alert('⚠️ ปิดงานสำเร็จ แต่บันทึกลง Knowledge Base ไม่สำเร็จ: ' + kbErr.message);
+        alert('⚠️ ปิดงานสำเร็จ แต่บันทึกประวัติวิธีแก้ไขไม่สำเร็จ: ' + kbErr.message);
       }
     }
   } catch (e) {
@@ -1200,7 +1200,7 @@ async function saveKbEdit() {
 
 // ---------- ลบบทความ KB ----------
 async function deleteKbArticle(article) {
-  if (!confirm(`ลบบทความ ${article.ticketCode} ออกจากฐานความรู้?\n\nตั๋วต้นฉบับจะไม่ถูกกระทบ แต่วิธีแก้ไขปัญหานี้จะหายไปถาวร`)) return;
+  if (!confirm(`ลบประวัติ ${article.ticketCode} ออกจากรายการ?\n\nตั๋วต้นฉบับจะไม่ถูกกระทบ แต่วิธีแก้ไขปัญหานี้จะหายไปถาวร`)) return;
 
   // optimistic remove
   const idx = kbArticles.findIndex(x => x.id === article.id);

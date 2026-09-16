@@ -59,7 +59,8 @@ function doPost(e) {
       addKnowledgeArticle: addKnowledgeArticle,
       updateKnowledgeArticle: updateKnowledgeArticle,
       deleteKnowledgeArticle: deleteKnowledgeArticle,
-      getMyProfile: getMyProfile
+      getMyProfile: getMyProfile,
+      getMyTickets: getMyTickets
     };
     const handler = handlers[request.action];
     if (!handler) return jsonOutput({ status: 'error', message: 'ไม่พบคำสั่ง Action: ' + request.action });
@@ -97,6 +98,7 @@ const ACL = {
   updateKnowledgeArticle: ['IT', 'Admin'],
   deleteKnowledgeArticle: ['IT', 'Admin'],
   getMyProfile:            ['IT', 'Admin'],
+  getMyTickets:            ['*'],
   getUsers:               ['Admin'],
   updateUserRole:      ['Admin'],
 };
@@ -638,6 +640,53 @@ function updateKnowledgeArticle(data, auth) {
 
     if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบบทความ KB-' + kbId };
     return { status: 'success', message: 'แก้ไขบทความ KB-' + kbId + ' สำเร็จ' };
+  });
+}
+
+// ==========================================
+// ดึงตั๋วของผู้ใช้ปัจจุบัน (สำหรับหน้า "ดูประวัติการแจ้งซ่อม" ของ staff)
+// ACL = ['*'] — ใครก็ดูของตัวเองได้
+// ==========================================
+function getMyTickets(data, auth) {
+  return withConn_(function (conn) {
+    const sql = `
+      SELECT
+        t."Ticket_ID", t."Issue_Detail", t."Status", t."Doc_PDF_URL",
+        t."Created_Date", t."Accepted_Date", t."Closed_Date",
+        c."Category_Name", b."Branch_Name", b."Province",
+        it."Full_Name" AS "Assignee_Name",
+        kb."Resolution_Text"
+      FROM "TICKET" t
+      LEFT JOIN "ISSUE_CATEGORY" c  ON c."Category_ID"   = t."Category_ID"
+      LEFT JOIN "BRANCH"         b  ON b."Branch_ID"     = t."Branch_ID"
+      LEFT JOIN "USER"           it ON it."LINE_User_ID" = t."IT_In_Charge"
+      LEFT JOIN "KNOWLEDGE_BASE" kb ON kb."Ticket_ID"    = t."Ticket_ID"
+      WHERE t."LINE_User_ID" = ?
+      ORDER BY t."Ticket_ID" DESC
+    `;
+    var stmt = conn.prepareStatement(sql);
+    stmt.setString(1, auth.userId);
+    var rs = stmt.executeQuery();
+    var tickets = [];
+    while (rs.next()) {
+      var id = rs.getInt('Ticket_ID');
+      tickets.push({
+        id: id,
+        code: 'TK-' + id,
+        detail: strOrNull_(rs, 'Issue_Detail') || '(ไม่มีรายละเอียด)',
+        category: strOrNull_(rs, 'Category_Name') || '',
+        branch: strOrNull_(rs, 'Branch_Name') || '',
+        province: strOrNull_(rs, 'Province') || '',
+        assignee: strOrNull_(rs, 'Assignee_Name') || null,
+        status: rs.getInt('Status'),
+        createdAt: toIsoLocal_(rs, 'Created_Date'),
+        acceptedAt: toIsoLocal_(rs, 'Accepted_Date'),
+        closedAt: toIsoLocal_(rs, 'Closed_Date'),
+        pdfUrl: strOrNull_(rs, 'Doc_PDF_URL') || '',
+        resolution: strOrNull_(rs, 'Resolution_Text') || ''
+      });
+    }
+    return { status: 'success', tickets: tickets };
   });
 }
 
