@@ -129,6 +129,7 @@
       $('content').classList.add('hidden');
       $('errorBox').classList.remove('hidden');
       $('errorMsg').innerText = msg || '';
+      $('retryBtn').innerText = msg === FT_AUTH_EXPIRED_MSG ? 'เข้าสู่ระบบใหม่' : 'ลองใหม่';
     }
 
     async function loadTickets() {
@@ -228,7 +229,10 @@
     $('pdfClose').addEventListener('click', closePdf);
     $('pdfModal').addEventListener('click', (e) => { if (e.target === $('pdfModal')) closePdf(); });
     $('refreshBtn').addEventListener('click', loadTickets);
-    $('retryBtn').addEventListener('click', loadTickets);
+    $('retryBtn').addEventListener('click', () => {
+      if ($('errorMsg').innerText === FT_AUTH_EXPIRED_MSG) ftRelogin(true);
+      else loadTickets();
+    });
 
     function showLogin() {
       $('loading').classList.add('hidden');

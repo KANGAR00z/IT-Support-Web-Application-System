@@ -118,6 +118,7 @@ const callBackend = (action, data) => ftCallBackend(action, data);
 // ถ้าไม่รอ liff.init() ให้เสร็จก่อน getIDToken() จะคืน null -> backend ปฏิเสธ -> ตกโหมดตัวอย่าง
 // ทั้งที่ login อยู่แท้ๆ · ทุก loadX() จึงต้อง await ตัวนี้ก่อนยิง backend
 let liffReady = Promise.resolve(true);
+let liffError = '';   // สาเหตุที่ login LINE ไม่ผ่าน — โชว์บนจอ เพราะในแอป LINE เปิด console ไม่ได้
 
 // พิมพ์ "สาเหตุจริง" ลงแบนเนอร์ — ใน LINE in-app browser เปิด DevTools ไม่ได้
 // ถ้า catch กลืน error ทิ้งเงียบๆ จะ debug บนมือถือไม่ได้เลยว่าพังเพราะอะไร
@@ -137,6 +138,8 @@ const isAuthError = (e) => /ยืนยันตัวตน|ID Token|เข้
 function setAuthExpired(on) {
   const el = $('authBanner');
   if (el) el.classList.toggle('hidden', !on);
+  const reason = $('authReason');
+  if (reason) reason.innerText = on && liffError ? 'สาเหตุ: ' + liffError : '';
 }
 
 /* ---------- แคชตั๋วในเครื่อง (stale-while-revalidate) ------------------------
@@ -606,19 +609,12 @@ async function loadMyProfile() {
   }
 }
 
-// พาไปหน้าเข้าสู่ระบบ LINE (ใช้ได้ทั้งในแอป LINE และเบราว์เซอร์เดสก์ท็อป)
-// ต้องส่ง redirectUri = หน้าปัจจุบัน ไม่งั้น LINE จะพากลับไปที่ endpoint ของ LIFF app
-// ซึ่งตอน fallback เป็น MY_LIFF_ID จะชี้ index.html -> หลุดไปหน้าแจ้งซ่อม
+// พาไปหน้าเข้าสู่ระบบ LINE — ftRelogin (common.js) logout ก่อนเสมอ เพราะถ้ายัง login ค้าง
+// ด้วย token หมดอายุ liff.login() เฉยๆ จะคืนใบเดิมกลับมา · redirectUri = หน้าปัจจุบัน
+// ไม่งั้นตอน fallback เป็น MY_LIFF_ID จะเด้งกลับไป index.html
 function ensureLogin() {
-  try {
-    if (typeof liff !== 'undefined' && liff.login) {
-      liff.login({ redirectUri: location.href });
-    } else {
-      alert('โหลด LINE SDK ไม่สำเร็จ');
-    }
-  } catch (e) {
-    alert('เรียกหน้าเข้าสู่ระบบ LINE ไม่สำเร็จ: ' + e.message);
-  }
+  if (typeof liff === 'undefined' || !liff.login) return alert('โหลด LINE SDK ไม่สำเร็จ');
+  if (!ftRelogin(true)) alert('เรียกหน้าเข้าสู่ระบบ LINE ไม่สำเร็จ');
 }
 
 // ---------- PDF ----------
@@ -1230,6 +1226,7 @@ function renderSettings() {
   if (!currentStaffId) {
     box.innerHTML = `
       <div class="text-sm" style="color:var(--ink-2)">ยังไม่ได้เข้าสู่ระบบ LINE</div>
+      ${liffError ? `<div class="text-xs mt-1 text-red-600 break-words">สาเหตุ: ${escapeHtml(liffError)}</div>` : ''}
       <button id="settingsLoginBtn" class="mt-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">เข้าสู่ระบบ LINE</button>
     `;
     $('settingsLoginBtn').addEventListener('click', ensureLogin);
@@ -1360,12 +1357,21 @@ async function setupLiff() {
       : (typeof MY_LIFF_ID !== 'undefined' ? MY_LIFF_ID : '');
     if (adminLiffId) {
       await liff.init({ liffId: adminLiffId });
-      if (!liff.isLoggedIn()) { ensureLogin(); return false; }  // เด้งไป login แล้วกลับมาที่หน้านี้
+      if (!liff.isLoggedIn()) {
+        // ในแอป LINE ต้อง login อัตโนมัติตั้งแต่ init — ถ้าไม่ แปลว่า LIFF ID ไม่ตรงกับ LIFF app ที่เปิดหน้านี้
+        // ห้ามเด้ง/reload เอง ไม่งั้นวนไม่รู้จบ
+        if (liff.isInClient()) throw new Error('LIFF ID ไม่ตรงกับ LIFF app ที่เปิดหน้านี้ (' + adminLiffId + ') — ตั้ง ADMIN_LIFF_ID ใน config.js');
+        ensureLogin(); return false;   // เด้งไป login แล้วกลับมาที่หน้านี้
+      }
+      if (!liff.getIDToken()) throw new Error('ไม่ได้ ID Token — LIFF ID ใน config.js ไม่ตรงกับ LIFF app ที่เปิดหน้านี้ (' + adminLiffId + ')');
 
-      const p = await liff.getProfile();
-      currentStaffId = p.userId;        // ค่านี้แหละที่ลง IT_In_Charge ได้จริง
-      currentStaff = p.displayName;
-      staffPicUrl = p.pictureUrl || '';
+      // getProfile() ต้องเปิด scope "profile" ใน LIFF app — ถ้าไม่ได้เปิด ยังใช้ userId จาก ID Token (sub) ได้
+      let p = null;
+      try { p = await liff.getProfile(); } catch (e) { console.warn('getProfile:', e.message); }
+      const tok = liff.getDecodedIDToken() || {};
+      currentStaffId = (p && p.userId) || tok.sub || '';   // ค่านี้แหละที่ลง IT_In_Charge ได้จริง
+      currentStaff = (p && p.displayName) || tok.name || currentStaff || 'ผู้ใช้ LINE';
+      staffPicUrl = (p && p.pictureUrl) || tok.picture || '';
       localStorage.setItem('ft_staff', currentStaff);
       localStorage.setItem('ft_staff_id', currentStaffId);
       localStorage.setItem('ft_staff_pic', staffPicUrl);
@@ -1378,6 +1384,7 @@ async function setupLiff() {
   } catch (e) {
     // login พังไม่ควรทำให้ดูบอร์ดไม่ได้ — ยังดูได้ แต่กดรับงานจะโดนเตือนให้ login ก่อน
     console.warn('LINE login ไม่สำเร็จ:', e);
+    liffError = e.message || String(e);
     currentStaffId = '';
     setStaffUI();
     refreshIdentityDependentViews();

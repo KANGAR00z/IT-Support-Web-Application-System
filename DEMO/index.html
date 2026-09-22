@@ -433,7 +433,7 @@
           alert("เกิดข้อผิดพลาดในการสร้างเอกสาร: " + response.message);
         }
       } catch (error) {
-        alert("ติดต่อเซิร์ฟเวอร์ล้มเหลว: " + error.message);
+        if (!handleAuthExpired(error)) alert("ติดต่อเซิร์ฟเวอร์ล้มเหลว: " + error.message);
       } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
@@ -478,6 +478,15 @@
       }
     });
 
+    // ให้ผู้ใช้เลือกเอง เพราะ login ใหม่ = โหลดหน้าใหม่ ข้อมูลที่กรอกไว้จะหาย
+    function handleAuthExpired(error) {
+      if (!error || error.message !== FT_AUTH_EXPIRED_MSG) return false;
+      if (confirm("เซสชัน LINE หมดอายุ ต้องเข้าสู่ระบบใหม่ก่อนส่งข้อมูล\n\nกด OK เพื่อเข้าสู่ระบบใหม่ (ข้อมูลที่กรอกไว้จะหาย ต้องกรอกอีกครั้ง)")) {
+        ftRelogin(true);
+      }
+      return true;
+    }
+
     // ---------- Submit (ยืนยันแจ้งซ่อม) ----------
     async function executeSubmit(btnElement) {
       const form = $("ticketForm");
@@ -508,7 +517,7 @@
           alert("❌ แจ้งซ่อมไม่สำเร็จ: " + response.message);
         }
       } catch (error) {
-        alert("❌ ติดต่อเซิร์ฟเวอร์ไม่ได้");
+        if (!handleAuthExpired(error)) alert("❌ ติดต่อเซิร์ฟเวอร์ไม่ได้: " + error.message);
       } finally {
         btnElement.disabled = false;
         btnElement.innerHTML = originalText;

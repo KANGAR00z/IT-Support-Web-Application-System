@@ -15,10 +15,45 @@ const $ = (id) => document.getElementById(id);
 // 🔒 แนบ LIFF ID Token ทุก request — backend เอาไป verify กับ LINE เพื่อยืนยันตัวตน
 //    (JWT เซ็นลายเซ็นแล้ว ปลอมไม่ได้) จึง "ไม่ต้องส่ง userId จาก client" อีก backend
 //    รู้เองว่าใครยิงจาก token getIDToken() คืน null ถ้ายังไม่ init/login -> backend ปฏิเสธ
+const FT_AUTH_EXPIRED_MSG = 'เซสชัน LINE หมดอายุ กรุณาเข้าสู่ระบบใหม่';
+const FT_RELOGIN_KEY = 'ft_relogin_at';
+const FT_RELOGIN_COOLDOWN = 2 * 60e3;
+
+function ftTokenExpired() {
+  try {
+    const t = liff.getDecodedIDToken && liff.getDecodedIDToken();
+    return !!(t && t.exp && t.exp * 1000 < Date.now() + 60e3);
+  } catch (e) { return false; }
+}
+
+// liff.getIDToken() ไม่ต่ออายุเอง ต้อง logout แล้ว login ใหม่ถึงจะได้ใบใหม่
+// กันวนลูป: ถ้าเพิ่งลองไปภายใน 2 นาทีแล้วยังไม่ผ่าน (เช่น channel ตั้งผิด) ให้หยุดแล้วโชว์ error แทน
+// คืน true = กำลังเด้งออกจากหน้านี้ · force = ผู้ใช้กดปุ่มเอง ไม่ต้องเช็ค cooldown
+function ftRelogin(force) {
+  try {
+    const last = Number(sessionStorage.getItem(FT_RELOGIN_KEY) || 0);
+    if (!force && Date.now() - last < FT_RELOGIN_COOLDOWN) return false;
+    sessionStorage.setItem(FT_RELOGIN_KEY, String(Date.now()));
+    if (liff.isLoggedIn()) liff.logout();
+    // ในแอป LINE เรียก liff.login() ไม่ได้ — reload แล้ว liff.init จะขอ token ใหม่ให้เอง
+    if (liff.isInClient()) location.reload();
+    else liff.login({ redirectUri: location.href });
+    return true;
+  } catch (e) { return false; }
+}
+
+// อ่านอย่างเดียว (get*) เด้ง login ใหม่ได้เลยไม่เสียอะไร
+// แต่คำสั่งเขียน (createTicket ฯลฯ) ห้ามเด้งเอง — ฟอร์มที่กรอกไว้/การกระทำจะหายเงียบๆ ให้หน้าจอบอกผู้ใช้แทน
+const ftIsReadAction = (action) => /^get/.test(action);
+
 async function ftCallBackend(action, data, log) {
   if (log) log('Sending payload to ' + action);
   let idToken = null;
   try { if (typeof liff !== 'undefined' && liff.getIDToken) idToken = liff.getIDToken(); } catch (e) { /* ยังไม่ login */ }
+  if (idToken && ftTokenExpired()) {
+    if (ftIsReadAction(action) && ftRelogin()) throw new Error('กำลังเข้าสู่ระบบใหม่…');
+    throw new Error(FT_AUTH_EXPIRED_MSG);
+  }
   // ตัดจบตั้งแต่ที่นี่ถ้าไม่มี token — ACL ฝั่ง backend ไม่มี action ไหนเปิดให้ไม่ login เลย
   // ยิงไปก็โดนปฏิเสธด้วยข้อความกลางๆ 'ยืนยันตัวตน LINE ไม่สำเร็จ' ซึ่งแยกสาเหตุไม่ออก
   // getIDToken() คืน null ได้ 2 กรณี: (1) liff.init() ยังไม่เสร็จ หรือยังไม่ login
@@ -32,7 +67,14 @@ async function ftCallBackend(action, data, log) {
     body: JSON.stringify({ action, idToken, data: data || {} })
   });
   if (!res.ok) throw new Error('เซิร์ฟเวอร์ตอบ HTTP ' + res.status);
-  return await res.json();
+  const json = await res.json();
+  // token ยังไม่ถึง exp ฝั่งเรา แต่ LINE บอกว่าใช้ไม่ได้แล้ว (นาฬิกาเครื่องเพี้ยน / ถูก revoke)
+  if (json && json.status === 'error' && /ยืนยันตัวตน LINE/.test(json.message || '')) {
+    if (ftIsReadAction(action) && ftRelogin()) throw new Error('กำลังเข้าสู่ระบบใหม่…');
+    throw new Error(FT_AUTH_EXPIRED_MSG);
+  }
+  try { sessionStorage.removeItem(FT_RELOGIN_KEY); } catch (e) {}
+  return json;
 }
 
 // ---------- ข้อความ ----------

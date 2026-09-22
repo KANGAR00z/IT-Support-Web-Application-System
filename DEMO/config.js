@@ -6,7 +6,7 @@ const GAS_API_URL = "https://script.google.com/macros/s/AKfycbylMdD3PyCDA8R5ukx-
 // LIFF app ตัวที่ 2 สำหรับหน้า Admin (endpoint ชี้มาที่ admin.html)
 // สร้างใน LINE Developers console แล้วเอา LIFF ID มาใส่ตรงนี้
 // ถ้ายังว่าง admin.html จะ fallback ไปใช้ MY_LIFF_ID (ยังทำงานได้ ไม่พัง)
-const ADMIN_LIFF_ID = "";
+const ADMIN_LIFF_ID = "2010392375-HlUu2ekR";
 
 // LIFF app สำหรับหน้าประวัติการแจ้งซ่อม (history.html)
 const HISTORY_LIFF_ID = "2010392375-KVcQdFos";
