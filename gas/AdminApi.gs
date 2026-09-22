@@ -60,7 +60,11 @@ function doPost(e) {
       updateKnowledgeArticle: updateKnowledgeArticle,
       deleteKnowledgeArticle: deleteKnowledgeArticle,
       getMyProfile: getMyProfile,
-      getMyTickets: getMyTickets
+      getMyTickets: getMyTickets,
+      getMasterData: getMasterData,
+      addMasterItem: addMasterItem,
+      updateMasterItem: updateMasterItem,
+      deleteMasterItem: deleteMasterItem
     };
     const handler = handlers[request.action];
     if (!handler) return jsonOutput({ status: 'error', message: 'ไม่พบคำสั่ง Action: ' + request.action });
@@ -99,8 +103,12 @@ const ACL = {
   deleteKnowledgeArticle: ['IT', 'Admin'],
   getMyProfile:            ['IT', 'Admin'],
   getMyTickets:            ['*'],
+  getMasterData:           ['*'],
   getUsers:               ['Admin'],
   updateUserRole:      ['Admin'],
+  addMasterItem:          ['Admin'],
+  updateMasterItem:       ['Admin'],
+  deleteMasterItem:       ['Admin'],
 };
 
 /* ---------- แคชระดับสคริปต์: ตัดงานซ้ำที่ทำทุก request ------------------------
@@ -703,5 +711,187 @@ function deleteKnowledgeArticle(data, auth) {
 
     if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบบทความ KB-' + kbId };
     return { status: 'success', message: 'ลบบทความ KB-' + kbId + ' สำเร็จ' };
+  });
+}
+
+/* =============================================================================
+   ข้อมูลหลัก (Master Data) — BRANCH / DEPARTMENT / ISSUE_CATEGORY
+   -----------------------------------------------------------------------------
+   ชื่อใน DB กับความหมายจริงไม่ตรงกัน (อย่าเปลี่ยนชื่อตาราง FK ผูกอยู่ทั่วระบบ):
+     BRANCH     = "พื้นที่" (ภาค 9 + 7 จังหวัด)  -> TICKET.Branch_ID
+     DEPARTMENT = "สาขา" ผูกกับพื้นที่ผ่าน Branch_ID -> USER.Dept_ID
+   🔒 client ส่งมาแค่ key ('branch'/'dept'/'category') — ชื่อตาราง/คอลัมน์ที่ต่อเข้า SQL
+      มาจาก MASTER_TABLES ฝั่ง server เท่านั้น ห้ามรับชื่อคอลัมน์จาก client (SQL injection)
+   ============================================================================= */
+const MASTER_TABLES = {
+  branch: {
+    table: 'BRANCH', id: 'Branch_ID', label: 'พื้นที่',
+    cols: { name: 'Branch_Name', province: 'Province' }, ints: [], required: ['name'],
+    refs: [['TICKET', 'Branch_ID', 'ตั๋วแจ้งซ่อม'], ['DEPARTMENT', 'Branch_ID', 'สาขา']]
+  },
+  dept: {
+    table: 'DEPARTMENT', id: 'Dept_ID', label: 'สาขา',
+    cols: { name: 'Dept_Name', branchId: 'Branch_ID' }, ints: ['branchId'], required: ['name', 'branchId'],
+    refs: [['USER', 'Dept_ID', 'ผู้ใช้งาน']]
+  },
+  category: {
+    table: 'ISSUE_CATEGORY', id: 'Category_ID', label: 'หมวดหมู่',
+    cols: { name: 'Category_Name' }, ints: [], required: ['name'],
+    refs: [['TICKET', 'Category_ID', 'ตั๋วแจ้งซ่อม'], ['KNOWLEDGE_BASE', 'Category_ID', 'ประวัติการแจ้งซ่อม']]
+  }
+};
+
+// จำนวนแถวที่อ้างถึงรายการนี้ แยกตามตาราง (u0, u1, ...) — แยกไว้เพราะยอดรวมอ่านแล้วเข้าใจผิด
+// (เช่น พื้นที่ "ใช้อยู่ 4" จริงๆ คือ ตั๋ว 1 + สาขาในพื้นที่ 3)
+function readMasterRows_(conn, m) {
+  const colKeys = Object.keys(m.cols);
+  const usage = m.refs.map(function (r, i) {
+    return '(SELECT COUNT(*) FROM "' + r[0] + '" x WHERE x."' + r[1] + '" = m."' + m.id + '") AS u' + i;
+  }).join(', ');
+  const sql = 'SELECT m."' + m.id + '" AS id, ' +
+    colKeys.map(function (k) { return 'm."' + m.cols[k] + '" AS "' + k + '"'; }).join(', ') +
+    ', ' + usage + ' FROM "' + m.table + '" m ORDER BY m."' + m.id + '"';
+  const rs = conn.createStatement().executeQuery(sql);
+  const rows = [];
+  while (rs.next()) {
+    const usedBy = [];
+    let used = 0;
+    m.refs.forEach(function (r, i) {
+      const n = rs.getInt('u' + i);
+      used += n;
+      if (n > 0) usedBy.push({ label: r[2], n: n });
+    });
+    const row = { id: rs.getInt('id'), used: used, usedBy: usedBy };
+    colKeys.forEach(function (k) {
+      row[k] = m.ints.indexOf(k) !== -1 ? rs.getInt(k) : (strOrNull_(rs, k) || '');
+    });
+    rows.push(row);
+  }
+  return rows;
+}
+
+// ACL '*' — ฟอร์มแจ้งซ่อมของ staff ใช้เติม dropdown
+function getMasterData(data, auth) {
+  return withConn_(function (conn) {
+    return {
+      status: 'success',
+      branches:   readMasterRows_(conn, MASTER_TABLES.branch),
+      depts:      readMasterRows_(conn, MASTER_TABLES.dept),
+      categories: readMasterRows_(conn, MASTER_TABLES.category)
+    };
+  });
+}
+
+// ตรวจ + แปลงค่าที่ client ส่งมา คืน { values } หรือ { error }
+function cleanMasterInput_(m, input) {
+  const values = {};
+  const keys = Object.keys(m.cols);
+  for (let i = 0; i < keys.length; i++) {
+    const k = keys[i];
+    const raw = input ? input[k] : undefined;
+    if (m.ints.indexOf(k) !== -1) {
+      const n = parseInt(raw, 10);
+      values[k] = n > 0 ? n : null;
+    } else {
+      const s = String(raw === undefined || raw === null ? '' : raw).trim();
+      if (s.length > 200) return { error: 'ข้อความยาวเกิน 200 ตัวอักษร' };
+      values[k] = s;
+    }
+    if (m.required.indexOf(k) !== -1 && !values[k]) return { error: 'กรุณากรอกข้อมูลให้ครบ' };
+  }
+  return { values: values };
+}
+
+function masterDuplicate_(conn, m, name, excludeId) {
+  const stmt = conn.prepareStatement(
+    'SELECT 1 FROM "' + m.table + '" WHERE LOWER(TRIM("' + m.cols.name + '")) = LOWER(?) AND "' + m.id + '" <> ?');
+  stmt.setString(1, name);
+  stmt.setInt(2, excludeId || 0);
+  return stmt.executeQuery().next();
+}
+
+function bindMasterValues_(stmt, m, values, startIndex) {
+  let i = startIndex;
+  Object.keys(m.cols).forEach(function (k) {
+    if (m.ints.indexOf(k) !== -1) {
+      if (values[k]) stmt.setInt(i, values[k]); else stmt.setNull(i, Jdbc.Types.INTEGER);
+    } else {
+      setStringOrNull(stmt, i, values[k]);
+    }
+    i++;
+  });
+  return i;
+}
+
+function addMasterItem(data, auth) {
+  const m = MASTER_TABLES[data && data.type];
+  if (!m) return { status: 'error', message: 'ไม่รู้จักประเภทข้อมูล' };
+  const c = cleanMasterInput_(m, data.item);
+  if (c.error) return { status: 'error', message: c.error };
+
+  return withConn_(function (conn) {
+    if (masterDuplicate_(conn, m, c.values.name, 0)) {
+      return { status: 'error', message: 'มี' + m.label + 'ชื่อ "' + c.values.name + '" อยู่แล้ว' };
+    }
+    // ใส่ id เอง (MAX+1) ไม่พึ่ง default — ใช้ได้ทั้งคอลัมน์ที่เป็น serial และไม่เป็น
+    const colKeys = Object.keys(m.cols);
+    const sql = 'INSERT INTO "' + m.table + '" ("' + m.id + '", ' +
+      colKeys.map(function (k) { return '"' + m.cols[k] + '"'; }).join(', ') + ') ' +
+      'SELECT COALESCE(MAX("' + m.id + '"), 0) + 1, ' + colKeys.map(function () { return '?'; }).join(', ') +
+      ' FROM "' + m.table + '" RETURNING "' + m.id + '"';
+    const stmt = conn.prepareStatement(sql);
+    bindMasterValues_(stmt, m, c.values, 1);
+    const rs = stmt.executeQuery();
+    const newId = rs.next() ? rs.getInt(1) : null;
+    return { status: 'success', message: 'เพิ่ม' + m.label + 'สำเร็จ', id: newId };
+  });
+}
+
+function updateMasterItem(data, auth) {
+  const m = MASTER_TABLES[data && data.type];
+  if (!m) return { status: 'error', message: 'ไม่รู้จักประเภทข้อมูล' };
+  const id = parseInt(data.id, 10);
+  if (!id) return { status: 'error', message: 'ไม่ได้ระบุรายการที่จะแก้ไข' };
+  const c = cleanMasterInput_(m, data.item);
+  if (c.error) return { status: 'error', message: c.error };
+
+  return withConn_(function (conn) {
+    if (masterDuplicate_(conn, m, c.values.name, id)) {
+      return { status: 'error', message: 'มี' + m.label + 'ชื่อ "' + c.values.name + '" อยู่แล้ว' };
+    }
+    const sql = 'UPDATE "' + m.table + '" SET ' +
+      Object.keys(m.cols).map(function (k) { return '"' + m.cols[k] + '" = ?'; }).join(', ') +
+      ' WHERE "' + m.id + '" = ?';
+    const stmt = conn.prepareStatement(sql);
+    const next = bindMasterValues_(stmt, m, c.values, 1);
+    stmt.setInt(next, id);
+    if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบ' + m.label + 'ที่จะแก้ไข' };
+    return { status: 'success', message: 'แก้ไข' + m.label + 'สำเร็จ' };
+  });
+}
+
+// ลบได้เฉพาะรายการที่ไม่มีใครอ้างถึง — ตั๋วเก่า/ผู้ใช้ต้องยังแสดงชื่อได้ถูกต้อง
+function deleteMasterItem(data, auth) {
+  const m = MASTER_TABLES[data && data.type];
+  if (!m) return { status: 'error', message: 'ไม่รู้จักประเภทข้อมูล' };
+  const id = parseInt(data.id, 10);
+  if (!id) return { status: 'error', message: 'ไม่ได้ระบุรายการที่จะลบ' };
+
+  return withConn_(function (conn) {
+    const inUse = [];
+    m.refs.forEach(function (r) {
+      const stmt = conn.prepareStatement('SELECT COUNT(*) FROM "' + r[0] + '" WHERE "' + r[1] + '" = ?');
+      stmt.setInt(1, id);
+      const rs = stmt.executeQuery();
+      const n = rs.next() ? rs.getInt(1) : 0;
+      if (n > 0) inUse.push(r[2] + ' ' + n + ' รายการ');
+    });
+    if (inUse.length) {
+      return { status: 'error', message: 'ลบไม่ได้ — ' + m.label + 'นี้ยังถูกใช้อยู่ใน ' + inUse.join(', ') };
+    }
+    const stmt = conn.prepareStatement('DELETE FROM "' + m.table + '" WHERE "' + m.id + '" = ?');
+    stmt.setInt(1, id);
+    if (stmt.executeUpdate() === 0) return { status: 'error', message: 'ไม่พบ' + m.label + 'ที่จะลบ' };
+    return { status: 'success', message: 'ลบ' + m.label + 'สำเร็จ' };
   });
 }

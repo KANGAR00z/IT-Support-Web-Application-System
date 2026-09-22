@@ -38,6 +38,7 @@ const VIEWS = {
                              : 'จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ' },
   kb:        { title:'ประวัติการแจ้งซ่อม', sub:'รวมประวัติและวิธีแก้ไขปัญหาจากตั๋วที่ปิดงานแล้ว' },
   users:     { title:'ผู้ใช้งาน (Users)', sub:'จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด' },
+  master:    { title:'ข้อมูลหลัก (Master Data)', sub:'พื้นที่ · สาขา · หมวดหมู่ปัญหา ที่ใช้ในฟอร์มแจ้งซ่อม' },
   settings:  { title:'ตั้งค่า (Settings)', sub:'บัญชีของฉันและค่าตั้งต้นของแดชบอร์ด' },
 };
 
@@ -1216,6 +1217,155 @@ async function deleteKbArticle(article) {
 }
 
 /* =============================================================================
+   ข้อมูลหลัก (Master Data) — พื้นที่ (BRANCH) · สาขา (DEPARTMENT) · หมวดหมู่ (ISSUE_CATEGORY)
+   ไม่มีข้อมูลจำลอง: ถ้าโหลดไม่ได้ให้เห็นว่าว่าง ดีกว่าแก้ของปลอมแล้วคิดว่าบันทึกแล้ว
+   ไม่ทำ optimistic update — แก้นานๆ ครั้ง และ backend อาจปฏิเสธ (ชื่อซ้ำ/ยังถูกใช้อยู่)
+   ============================================================================= */
+const MASTER_TYPES = {
+  branch:   { label: 'พื้นที่',       key: 'branches' },
+  dept:     { label: 'สาขา',         key: 'depts' },
+  category: { label: 'หมวดหมู่ปัญหา', key: 'categories' },
+};
+let masterData = { branches: [], depts: [], categories: [] };
+let masterLoaded = false;
+let masterTab = 'branch';
+let masterEditing = null;   // { type, id } — id = null คือเพิ่มใหม่
+
+async function loadMaster() {
+  await liffReady;
+  $('masterList').innerHTML = '<div class="py-6 text-center text-xs" style="color:var(--ink-muted)">กำลังโหลด...</div>';
+  try {
+    const res = await callBackend('getMasterData', {});
+    if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend');
+    masterData = { branches: res.branches || [], depts: res.depts || [], categories: res.categories || [] };
+    $('masterErrorBanner').classList.add('hidden');
+    setAuthExpired(false);
+  } catch (e) {
+    masterData = { branches: [], depts: [], categories: [] };
+    $('masterErrorReason').innerText = 'สาเหตุ: ' + e.message;
+    $('masterErrorBanner').classList.remove('hidden');
+    if (isAuthError(e)) setAuthExpired(true);
+  }
+  masterLoaded = true;
+  renderMaster();
+}
+
+// "ตั๋วแจ้งซ่อม 1 · สาขา 3" — ยอดรวมเดียวอ่านแล้วนึกว่าเป็นจำนวนตั๋ว
+const usageText = (r) => (r.usedBy && r.usedBy.length)
+  ? r.usedBy.map(u => u.label + ' ' + u.n).join(' · ')
+  : (r.used ? 'ใช้อยู่ ' + r.used : 'ยังไม่ถูกใช้');
+
+const branchName = (id) => (masterData.branches.find(b => b.id === id) || {}).name || '(ไม่พบพื้นที่ #' + id + ')';
+
+function renderMaster() {
+  document.querySelectorAll('.master-tab').forEach(b => {
+    const on = b.dataset.tab === masterTab;
+    b.className = 'master-tab px-3 py-1.5 rounded-full border transition-colors ' +
+      (on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50');
+    b.innerText = MASTER_TYPES[b.dataset.tab].label + ' (' + masterData[MASTER_TYPES[b.dataset.tab].key].length + ')';
+  });
+  $('masterAddLabel').innerText = MASTER_TYPES[masterTab].label;
+
+  let rows = masterData[MASTER_TYPES[masterTab].key];
+  // สาขาเรียงตามพื้นที่ก่อน จะได้อ่านเป็นกลุ่มเหมือนในฟอร์มแจ้งซ่อม
+  if (masterTab === 'dept') rows = [...rows].sort((a, b) => (a.branchId - b.branchId) || (a.id - b.id));
+
+  $('masterEmpty').classList.toggle('hidden', rows.length > 0);
+  const box = $('masterList');
+  box.innerHTML = '';
+  rows.forEach(r => {
+    const sub = masterTab === 'branch' ? (r.province ? 'จังหวัด' + r.province : '')
+              : masterTab === 'dept'   ? branchName(r.branchId) : '';
+    const el = document.createElement('div');
+    el.className = 'flex items-center gap-3 py-2.5';
+    el.innerHTML = `
+      <span class="text-[11px] w-8 shrink-0 text-right tabular-nums" style="color:var(--ink-muted)">#${r.id}</span>
+      <div class="min-w-0 flex-1">
+        <div class="text-sm truncate" style="color:var(--ink)">${escapeHtml(r.name || '(ไม่มีชื่อ)')}</div>
+        ${sub ? `<div class="text-[11px] truncate" style="color:var(--ink-muted)">${escapeHtml(sub)}</div>` : ''}
+      </div>
+      <span class="text-[11px] shrink-0 text-right max-w-[40%]" style="color:var(--ink-muted)">${escapeHtml(usageText(r))}</span>
+      <button data-act="edit" class="text-xs text-slate-500 hover:text-blue-600 min-h-[36px] px-1.5 shrink-0" title="แก้ไข">✏️</button>
+      <button data-act="del" class="text-xs min-h-[36px] px-1.5 shrink-0 ${r.used ? 'opacity-30 cursor-not-allowed' : 'text-slate-500 hover:text-red-600'}"
+              title="${r.used ? 'ลบไม่ได้ — ยังถูกใช้อยู่' : 'ลบ'}">🗑️</button>`;
+    el.querySelector('[data-act="edit"]').addEventListener('click', () => openMasterModal(masterTab, r));
+    el.querySelector('[data-act="del"]').addEventListener('click', () => deleteMaster(masterTab, r));
+    box.appendChild(el);
+  });
+}
+
+function openMasterModal(type, row) {
+  masterEditing = { type, id: row ? row.id : null };
+  const label = MASTER_TYPES[type].label;
+  $('masterModalTitle').innerText = (row ? '✏️ แก้ไข' : '＋ เพิ่ม') + label;
+  $('masterModalSub').innerText = row && row.used
+    ? `ถูกใช้อยู่ใน ${usageText(row)} — ชื่อที่แก้จะมีผลกับข้อมูลเดิมทั้งหมดด้วย`
+    : 'จะแสดงเป็นตัวเลือกในฟอร์มแจ้งซ่อม';
+  $('masterName').value = row ? row.name : '';
+  $('masterProvinceRow').classList.toggle('hidden', type !== 'branch');
+  $('masterProvince').value = row && type === 'branch' ? row.province : '';
+  $('masterBranchRow').classList.toggle('hidden', type !== 'dept');
+  if (type === 'dept') {
+    $('masterBranch').innerHTML = '<option value="">-- เลือกพื้นที่ --</option>' +
+      masterData.branches.map(b => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
+    $('masterBranch').value = row ? String(row.branchId) : '';
+  }
+  $('masterFormError').classList.add('hidden');
+  $('masterModal').classList.remove('hidden');
+  $('masterName').focus();
+}
+
+function closeMasterModal() {
+  $('masterModal').classList.add('hidden');
+  masterEditing = null;
+}
+
+async function saveMaster() {
+  if (!masterEditing) return;
+  const { type, id } = masterEditing;
+  const item = { name: $('masterName').value.trim() };
+  if (type === 'branch') item.province = $('masterProvince').value.trim();
+  if (type === 'dept')   item.branchId = parseInt($('masterBranch').value, 10) || null;
+
+  const showErr = (msg) => { $('masterFormError').innerText = msg; $('masterFormError').classList.remove('hidden'); };
+  if (!item.name) return showErr('กรุณากรอกชื่อ');
+  if (type === 'dept' && !item.branchId) return showErr('กรุณาเลือกพื้นที่');
+
+  const btn = $('masterSaveBtn');
+  btn.disabled = true;
+  btn.innerText = 'กำลังบันทึก...';
+  try {
+    const res = await callBackend(id ? 'updateMasterItem' : 'addMasterItem', { type, id, item });
+    if (!res || res.status !== 'success') throw new Error((res && res.message) || 'บันทึกไม่สำเร็จ');
+    closeMasterModal();
+    await loadMaster();
+  } catch (e) {
+    showErr('❌ ' + e.message);
+    if (isAuthError(e)) setAuthExpired(true);
+  } finally {
+    btn.disabled = false;
+    btn.innerText = 'บันทึก';
+  }
+}
+
+async function deleteMaster(type, row) {
+  const label = MASTER_TYPES[type].label;
+  if (row.used) {
+    alert(`ลบ${label} "${row.name}" ไม่ได้ เพราะยังถูกใช้อยู่ใน ${usageText(row)}\n\nข้อมูลเดิม (ตั๋ว/ผู้ใช้) ต้องยังแสดงชื่อได้ถูกต้อง แก้ชื่อแทนได้`);
+    return;
+  }
+  if (!confirm(`ลบ${label} "${row.name}"?\n\nจะหายจากตัวเลือกในฟอร์มแจ้งซ่อมทันที`)) return;
+  try {
+    const res = await callBackend('deleteMasterItem', { type, id: row.id });
+    if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ลบไม่สำเร็จ');
+    await loadMaster();
+  } catch (e) {
+    alert('❌ ' + e.message);
+    if (isAuthError(e)) setAuthExpired(true);
+  }
+}
+
+/* =============================================================================
    Settings — บัญชีของฉัน + ค่าตั้งต้นของแดชบอร์ด (เก็บใน localStorage ล้วนๆ)
    ============================================================================= */
 
@@ -1296,6 +1446,7 @@ function switchView(v) {
   $('viewDashboard').classList.toggle('hidden', v !== 'dashboard');
   $('viewKB').classList.toggle('hidden', v !== 'kb');
   $('viewUsers').classList.toggle('hidden', v !== 'users');
+  $('viewMaster').classList.toggle('hidden', v !== 'master');
   $('viewSettings').classList.toggle('hidden', v !== 'settings');
   $('viewTitle').innerText = VIEWS[v].title;
   $('viewSubtitle').innerText = VIEWS[v].sub;
@@ -1304,6 +1455,7 @@ function switchView(v) {
   if (v === 'dashboard') renderDashboard();  // วาดใหม่ตอนแสดงเสมอ ให้ตัวเลข/ขนาด svg สดล่าสุด
   if (v === 'kb')        { kbLoaded    ? renderKB()    : loadKB(); }     // โหลดครั้งแรกตอนเข้าหน้า
   if (v === 'users')     { usersLoaded ? renderUsers() : loadUsers(); }  // โหลดครั้งแรกตอนเข้าหน้า
+  if (v === 'master')    { masterLoaded ? renderMaster() : loadMaster(); }
   if (v === 'settings')  renderSettings();
 }
 
@@ -1315,6 +1467,7 @@ $('staffBtn').addEventListener('click', () => { if (!currentStaffId) ensureLogin
 $('refreshBtn').addEventListener('click', () => {
   if (currentView === 'users') return loadUsers();
   if (currentView === 'kb')    return loadKB();
+  if (currentView === 'master') return loadMaster();
   loadTickets();
 });
 $('pdfClose').addEventListener('click', closePdf);
@@ -1328,6 +1481,16 @@ $('closeModal').addEventListener('click', (e) => { if (e.target === $('closeModa
 $('kbEditCancelBtn').addEventListener('click', cancelKbEdit);
 $('kbEditSaveBtn').addEventListener('click', saveKbEdit);
 $('kbEditModal').addEventListener('click', (e) => { if (e.target === $('kbEditModal')) cancelKbEdit(); });
+document.querySelectorAll('.master-tab').forEach(b =>
+  b.addEventListener('click', () => { masterTab = b.dataset.tab; renderMaster(); }));
+$('masterAddBtn').addEventListener('click', () => {
+  if (masterTab === 'dept' && !masterData.branches.length) return alert('ต้องมีพื้นที่อย่างน้อย 1 รายการก่อนเพิ่มสาขา');
+  openMasterModal(masterTab, null);
+});
+$('masterCancelBtn').addEventListener('click', closeMasterModal);
+$('masterSaveBtn').addEventListener('click', saveMaster);
+$('masterName').addEventListener('keydown', (e) => { if (e.key === 'Enter') saveMaster(); });
+$('masterModal').addEventListener('click', (e) => { if (e.target === $('masterModal')) closeMasterModal(); });
 
 // หมุนจอ/ย่อขยายหน้าต่าง: กราฟเส้นคำนวณ viewBox จากความกว้างจริง ต้องวาดใหม่
 // (การ์ด/ตารางเป็น CSS ล้วน ปรับเองอยู่แล้ว) — debounce กันวาดรัวตอนลากขอบหน้าต่าง

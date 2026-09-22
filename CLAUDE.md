@@ -93,9 +93,15 @@ GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/jso
 
 | กลุ่ม | actions |
 |---|---|
-| `'*'` | `generateDocument`, `createTicket`, `deleteTempPdf` |
-| `IT` + `Admin` | `getTickets`, `acceptTicket`, `updateTicketStatus`, `getKnowledgeBase`, `addKnowledgeArticle` |
-| `Admin` | `getUsers`, `updateUserRole` |
+| `'*'` | `generateDocument`, `createTicket`, `deleteTempPdf`, `getMyTickets`, `getMasterData` |
+| `IT` + `Admin` | `getTickets`, `acceptTicket`, `updateTicketStatus`, `getKnowledgeBase`, `addKnowledgeArticle`, `updateKnowledgeArticle`, `deleteKnowledgeArticle`, `getMyProfile` |
+| `Admin` | `getUsers`, `updateUserRole`, `addMasterItem`, `updateMasterItem`, `deleteMasterItem` |
+
+**ข้อมูลหลัก (Master Data)** — ชื่อตารางไม่ตรงความหมาย ห้ามเปลี่ยนชื่อ (FK ผูกทั่วระบบ):
+`BRANCH` = พื้นที่ (8) → `TICKET.Branch_ID` · `DEPARTMENT` = สาขา (16, มี `Branch_ID`) → `USER.Dept_ID` ·
+`ISSUE_CATEGORY` = หมวดหมู่ · "ส่วน" 5 ตัวเลือกไม่มีตาราง อยู่ใน `index.html` อย่างเดียว
+`*MasterItem` รับแค่ key `branch`/`dept`/`category` — ชื่อตาราง/คอลัมน์มาจาก `MASTER_TABLES` ฝั่ง server
+ลบได้เฉพาะแถวที่ไม่มีใครอ้างถึง (นับจาก `refs`)
 
 **fail-closed**: DB ล่ม / ไม่มีบัญชีใน `USER` → `getUserRole_` คืน `null` → ปฏิเสธ
 

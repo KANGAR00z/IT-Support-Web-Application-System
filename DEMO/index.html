@@ -308,6 +308,8 @@
           $("profileFallback").classList.add("hidden");
         }
 
+        loadMasterData();   // ไม่ await — ฟอร์มใช้ตัวเลือกเดิมใน HTML/แคชไปก่อนระหว่างรอ
+
         $("loading").classList.add("hidden");
         $("formContainer").classList.remove("hidden");
 
@@ -329,9 +331,84 @@
     // ---------- Form data collectors ----------
     // stripEmoji / cleanCategory (เอกสารราชการห้ามมี emoji) อยู่ใน common.js
 
-    // ชื่อเต็มทางการของสาขา: ประกอบจาก optgroup (พื้นที่) + ข้อความ option
+    // ---------- ข้อมูลหลัก (พื้นที่/สาขา/หมวดหมู่) จาก DB ----------
+    // ตัวเลือกที่เขียนไว้ใน HTML = ค่าสำรองตอนโหลดไม่สำเร็จ (ID ตรงกับ DB ณ วันที่ย้าย)
+    // BRANCH = พื้นที่ · DEPARTMENT = สาขา (มี branchId) · value ของ option = Dept_ID เหมือนเดิม
+    const MASTER_CACHE_KEY = 'ft_master_cache';
+
+    function applyMasterData(md) {
+      if (!md || !(md.branches || []).length || !(md.depts || []).length || !(md.categories || []).length) return false;
+      const deptSel = $("inputDept"), catSel = $("category");
+      const prevDept = deptSel.value, prevCat = catSel.value;
+
+      deptSel.innerHTML = '';
+      let groupNo = 0;
+      md.branches.forEach(b => {
+        const ds = md.depts.filter(d => d.branchId === b.id);
+        if (!ds.length) return;
+        let grp = null;
+        ds.forEach(d => {
+          const opt = document.createElement('option');
+          opt.value = d.id;
+          opt.textContent = d.name;
+          opt.dataset.branch = b.id;
+          // สำนักงานใหญ่ (ชื่อสาขาขึ้นต้นด้วยชื่อพื้นที่) ไม่ต้องจัดกลุ่ม และ PDF ใช้แค่ชื่อพื้นที่
+          // เช่น "สำนักงานสรรพสามิตภาคที่ 9" · ที่เหลือ = ชื่อพื้นที่ + ชื่อสาขา
+          if (d.name.startsWith(b.name)) {
+            opt.dataset.full = b.name;
+            deptSel.appendChild(opt);
+          } else {
+            if (!grp) {
+              grp = document.createElement('optgroup');
+              grp.label = (++groupNo) + '. ' + b.name.replace(/^สำนักงานสรรพสามิต/, '');
+              deptSel.appendChild(grp);
+            }
+            opt.dataset.full = b.name + ' ' + d.name;
+            grp.appendChild(opt);
+          }
+        });
+      });
+
+      catSel.innerHTML = '<option value="" disabled>-- เลือกหมวดหมู่ --</option>';
+      md.categories.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id;
+        opt.textContent = c.name;
+        catSel.appendChild(opt);
+      });
+
+      // คงค่าที่ผู้ใช้เลือกไว้แล้ว ถ้ายังมีอยู่ในรายการใหม่
+      if ([...deptSel.options].some(o => o.value === prevDept)) deptSel.value = prevDept;
+      catSel.value = [...catSel.options].some(o => o.value === prevCat && prevCat) ? prevCat : '';
+      $("dispDept").innerText = deptSel.options[deptSel.selectedIndex].text;
+      return true;
+    }
+
+    async function loadMasterData() {
+      try { applyMasterData(JSON.parse(localStorage.getItem(MASTER_CACHE_KEY) || 'null')); } catch (e) {}
+      try {
+        const res = await callBackend('getMasterData', {});
+        if (res && res.status === 'success' && applyMasterData(res)) {
+          const slim = {
+            branches: res.branches.map(b => ({ id: b.id, name: b.name })),
+            depts: res.depts.map(d => ({ id: d.id, name: d.name, branchId: d.branchId })),
+            categories: res.categories.map(c => ({ id: c.id, name: c.name }))
+          };
+          try { localStorage.setItem(MASTER_CACHE_KEY, JSON.stringify(slim)); } catch (e) {}
+          logDebug('Master data loaded from DB');
+        } else {
+          logDebug('getMasterData failed: ' + ((res && res.message) || 'empty'));
+        }
+      } catch (e) {
+        logDebug('getMasterData error: ' + e.message);
+      }
+    }
+
+    // ชื่อเต็มทางการของสาขา — ถ้ามาจาก DB ใช้ data-full ที่ประกอบไว้แล้ว
+    // ไม่งั้น (ตัวเลือกสำรองใน HTML) ประกอบจาก optgroup (พื้นที่) + ข้อความ option
     // เช่น optgroup "5. พื้นที่ยะลา" + "สาขาเบตง" -> "สำนักงานสรรพสามิตพื้นที่ยะลา สาขาเบตง"
     function fullBranchName(optionEl) {
+      if (optionEl.dataset.full) return optionEl.dataset.full;
       const grp = optionEl.parentElement;
       if (grp && grp.tagName === 'OPTGROUP') {
         const area = grp.label.replace(/^\s*\d+\.\s*พื้นที่\s*/, '').trim();
