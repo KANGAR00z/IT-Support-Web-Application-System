@@ -1235,7 +1235,7 @@ async function loadMaster() {
   await liffReady;
   $('masterList').innerHTML = '<div class="py-6 text-center text-xs" style="color:var(--ink-muted)">กำลังโหลด...</div>';
   try {
-    const res = await callBackend('getMasterData', {});
+    const res = await callBackend('getMasterData', { withUsage: true });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend');
     masterData = { branches: res.branches || [], depts: res.depts || [], categories: res.categories || [] };
     $('masterErrorBanner').classList.add('hidden');
@@ -1321,7 +1321,7 @@ function closeMasterModal() {
 }
 
 async function saveMaster() {
-  if (!masterEditing) return;
+  if (!masterEditing || $('masterSaveBtn').disabled) return;   // กด Enter ซ้ำระหว่างรอ = เพิ่มซ้ำ
   const { type, id } = masterEditing;
   const item = { name: $('masterName').value.trim() };
   if (type === 'branch') item.province = $('masterProvince').value.trim();

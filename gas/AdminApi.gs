@@ -71,7 +71,7 @@ function doPost(e) {
 
     // 🔒 ชั้นตรวจสิทธิ์: verify idToken + เช็ค ACL
     const auth = authorize_(request.action, request.idToken);
-    if (!auth.ok) return jsonOutput({ status: 'error', message: auth.message });
+    if (!auth.ok) return jsonOutput({ status: 'error', code: auth.code || null, message: auth.message });
 
     // ส่งตัวตนที่ verify แล้ว (auth) เป็น arg ที่ 2 — handler ใช้ auth.userId ไม่เชื่อ client
     return jsonOutput(handler(request.data, auth));
@@ -193,7 +193,8 @@ function authorize_(action, idToken) {
   if (!allowed) return { ok: false, message: 'ไม่พบคำสั่ง Action: ' + action };
 
   const v = verifyIdToken_(idToken);
-  if (!v.ok) return { ok: false, message: 'ยืนยันตัวตน LINE ไม่สำเร็จ กรุณาเข้าสู่ระบบใหม่' };
+  // code ให้ client ตัดสินใจ login ใหม่ได้โดยไม่ต้องจับคำในข้อความภาษาไทย
+  if (!v.ok) return { ok: false, code: 'AUTH_INVALID', message: 'ยืนยันตัวตน LINE ไม่สำเร็จ กรุณาเข้าสู่ระบบใหม่' };
 
   if (allowed.indexOf('*') !== -1) return { ok: true, userId: v.userId, role: null };  // แค่ login พอ
 
@@ -663,12 +664,14 @@ function getMyTickets(data, auth) {
         t."Created_Date", t."Accepted_Date", t."Closed_Date",
         c."Category_Name", b."Branch_Name", b."Province",
         it."Full_Name" AS "Assignee_Name",
-        kb."Resolution_Text"
+        -- ตั๋วที่ปิด-เปิด-ปิดซ้ำมี KB หลายแถว: เอาอันล่าสุดอันเดียว ไม่งั้นตั๋วโผล่ซ้ำ
+        (SELECT kb."Resolution_Text" FROM "KNOWLEDGE_BASE" kb
+          WHERE kb."Ticket_ID" = t."Ticket_ID"
+          ORDER BY kb."Created_Date" DESC LIMIT 1) AS "Resolution_Text"
       FROM "TICKET" t
       LEFT JOIN "ISSUE_CATEGORY" c  ON c."Category_ID"   = t."Category_ID"
       LEFT JOIN "BRANCH"         b  ON b."Branch_ID"     = t."Branch_ID"
       LEFT JOIN "USER"           it ON it."LINE_User_ID" = t."IT_In_Charge"
-      LEFT JOIN "KNOWLEDGE_BASE" kb ON kb."Ticket_ID"    = t."Ticket_ID"
       WHERE t."LINE_User_ID" = ?
       ORDER BY t."Ticket_ID" DESC
     `;
@@ -743,25 +746,28 @@ const MASTER_TABLES = {
 
 // จำนวนแถวที่อ้างถึงรายการนี้ แยกตามตาราง (u0, u1, ...) — แยกไว้เพราะยอดรวมอ่านแล้วเข้าใจผิด
 // (เช่น พื้นที่ "ใช้อยู่ 4" จริงๆ คือ ตั๋ว 1 + สาขาในพื้นที่ 3)
-function readMasterRows_(conn, m) {
+// withUsage = นับการใช้งานด้วย (เฉพาะ Admin) — ฟอร์มแจ้งซ่อมไม่ต้องใช้ และไม่ควรเห็นยอดตั๋ว/ผู้ใช้ต่อสาขา
+function readMasterRows_(conn, m, withUsage) {
   const colKeys = Object.keys(m.cols);
-  const usage = m.refs.map(function (r, i) {
+  const usage = withUsage ? ', ' + m.refs.map(function (r, i) {
     return '(SELECT COUNT(*) FROM "' + r[0] + '" x WHERE x."' + r[1] + '" = m."' + m.id + '") AS u' + i;
-  }).join(', ');
+  }).join(', ') : '';
   const sql = 'SELECT m."' + m.id + '" AS id, ' +
     colKeys.map(function (k) { return 'm."' + m.cols[k] + '" AS "' + k + '"'; }).join(', ') +
-    ', ' + usage + ' FROM "' + m.table + '" m ORDER BY m."' + m.id + '"';
+    usage + ' FROM "' + m.table + '" m ORDER BY m."' + m.id + '"';
   const rs = conn.createStatement().executeQuery(sql);
   const rows = [];
   while (rs.next()) {
-    const usedBy = [];
-    let used = 0;
-    m.refs.forEach(function (r, i) {
-      const n = rs.getInt('u' + i);
-      used += n;
-      if (n > 0) usedBy.push({ label: r[2], n: n });
-    });
-    const row = { id: rs.getInt('id'), used: used, usedBy: usedBy };
+    const row = { id: rs.getInt('id') };
+    if (withUsage) {
+      row.used = 0;
+      row.usedBy = [];
+      m.refs.forEach(function (r, i) {
+        const n = rs.getInt('u' + i);
+        row.used += n;
+        if (n > 0) row.usedBy.push({ label: r[2], n: n });
+      });
+    }
     colKeys.forEach(function (k) {
       row[k] = m.ints.indexOf(k) !== -1 ? rs.getInt(k) : (strOrNull_(rs, k) || '');
     });
@@ -772,12 +778,13 @@ function readMasterRows_(conn, m) {
 
 // ACL '*' — ฟอร์มแจ้งซ่อมของ staff ใช้เติม dropdown
 function getMasterData(data, auth) {
+  const withUsage = !!(data && data.withUsage) && getUserRole_(auth.userId) === 'Admin';
   return withConn_(function (conn) {
     return {
       status: 'success',
-      branches:   readMasterRows_(conn, MASTER_TABLES.branch),
-      depts:      readMasterRows_(conn, MASTER_TABLES.dept),
-      categories: readMasterRows_(conn, MASTER_TABLES.category)
+      branches:   readMasterRows_(conn, MASTER_TABLES.branch, withUsage),
+      depts:      readMasterRows_(conn, MASTER_TABLES.dept, withUsage),
+      categories: readMasterRows_(conn, MASTER_TABLES.category, withUsage)
     };
   });
 }
@@ -823,6 +830,17 @@ function bindMasterValues_(stmt, m, values, startIndex) {
   return i;
 }
 
+function hasIdDefault_(conn, m) {
+  const stmt = conn.prepareStatement(
+    'SELECT column_default, is_identity FROM information_schema.columns ' +
+    "WHERE table_schema = 'public' AND table_name = ? AND column_name = ?");
+  stmt.setString(1, m.table);
+  stmt.setString(2, m.id);
+  const rs = stmt.executeQuery();
+  if (!rs.next()) return false;
+  return !!rs.getString('column_default') || rs.getString('is_identity') === 'YES';
+}
+
 function addMasterItem(data, auth) {
   const m = MASTER_TABLES[data && data.type];
   if (!m) return { status: 'error', message: 'ไม่รู้จักประเภทข้อมูล' };
@@ -833,12 +851,16 @@ function addMasterItem(data, auth) {
     if (masterDuplicate_(conn, m, c.values.name, 0)) {
       return { status: 'error', message: 'มี' + m.label + 'ชื่อ "' + c.values.name + '" อยู่แล้ว' };
     }
-    // ใส่ id เอง (MAX+1) ไม่พึ่ง default — ใช้ได้ทั้งคอลัมน์ที่เป็น serial และไม่เป็น
+    // id มี default (serial/identity) -> ปล่อยให้ DB ออกเอง sequence จะได้เดินตาม
+    // (ใส่เองจะชน GENERATED ALWAYS และทำให้ insert ครั้งหน้าที่ใช้ default ได้ id ซ้ำ)
+    // ไม่มี default -> ใช้ MAX+1 (admin เพิ่มนานๆ ครั้ง โอกาสชนกันแทบไม่มี)
     const colKeys = Object.keys(m.cols);
-    const sql = 'INSERT INTO "' + m.table + '" ("' + m.id + '", ' +
-      colKeys.map(function (k) { return '"' + m.cols[k] + '"'; }).join(', ') + ') ' +
-      'SELECT COALESCE(MAX("' + m.id + '"), 0) + 1, ' + colKeys.map(function () { return '?'; }).join(', ') +
-      ' FROM "' + m.table + '" RETURNING "' + m.id + '"';
+    const colList = colKeys.map(function (k) { return '"' + m.cols[k] + '"'; }).join(', ');
+    const params = colKeys.map(function () { return '?'; }).join(', ');
+    const sql = hasIdDefault_(conn, m)
+      ? 'INSERT INTO "' + m.table + '" (' + colList + ') VALUES (' + params + ') RETURNING "' + m.id + '"'
+      : 'INSERT INTO "' + m.table + '" ("' + m.id + '", ' + colList + ') ' +
+        'SELECT COALESCE(MAX("' + m.id + '"), 0) + 1, ' + params + ' FROM "' + m.table + '" RETURNING "' + m.id + '"';
     const stmt = conn.prepareStatement(sql);
     bindMasterValues_(stmt, m, c.values, 1);
     const rs = stmt.executeQuery();

@@ -387,7 +387,8 @@
     async function loadMasterData() {
       try { applyMasterData(JSON.parse(localStorage.getItem(MASTER_CACHE_KEY) || 'null')); } catch (e) {}
       try {
-        const res = await callBackend('getMasterData', {});
+        // noRelogin: โหลดเบื้องหลังตอนผู้ใช้อาจกำลังกรอกฟอร์ม — เด้ง login เอง = ข้อมูลที่กรอกหายเงียบๆ
+        const res = await ftCallBackend('getMasterData', {}, logDebug, { noRelogin: true });
         if (res && res.status === 'success' && applyMasterData(res)) {
           const slim = {
             branches: res.branches.map(b => ({ id: b.id, name: b.name })),

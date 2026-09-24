@@ -19,13 +19,6 @@ const FT_AUTH_EXPIRED_MSG = 'เซสชัน LINE หมดอายุ ก�
 const FT_RELOGIN_KEY = 'ft_relogin_at';
 const FT_RELOGIN_COOLDOWN = 2 * 60e3;
 
-function ftTokenExpired() {
-  try {
-    const t = liff.getDecodedIDToken && liff.getDecodedIDToken();
-    return !!(t && t.exp && t.exp * 1000 < Date.now() + 60e3);
-  } catch (e) { return false; }
-}
-
 // liff.getIDToken() ไม่ต่ออายุเอง ต้อง logout แล้ว login ใหม่ถึงจะได้ใบใหม่
 // กันวนลูป: ถ้าเพิ่งลองไปภายใน 2 นาทีแล้วยังไม่ผ่าน (เช่น channel ตั้งผิด) ให้หยุดแล้วโชว์ error แทน
 // คืน true = กำลังเด้งออกจากหน้านี้ · force = ผู้ใช้กดปุ่มเอง ไม่ต้องเช็ค cooldown
@@ -46,14 +39,13 @@ function ftRelogin(force) {
 // แต่คำสั่งเขียน (createTicket ฯลฯ) ห้ามเด้งเอง — ฟอร์มที่กรอกไว้/การกระทำจะหายเงียบๆ ให้หน้าจอบอกผู้ใช้แทน
 const ftIsReadAction = (action) => /^get/.test(action);
 
-async function ftCallBackend(action, data, log) {
+// opts.noRelogin = ห้ามเด้ง login เองแม้เป็นคำสั่งอ่าน (เช่นโหลดเบื้องหลังในหน้าที่มีฟอร์มกรอกค้างอยู่)
+// ไม่เช็ควันหมดอายุ token ฝั่งเครื่อง — นาฬิกามือถือเพี้ยนจะทำให้ token ใหม่ถูกมองว่าหมดอายุตลอด
+// ให้ server (เวลาถูกต้อง) เป็นคนตัดสินอย่างเดียว
+async function ftCallBackend(action, data, log, opts) {
   if (log) log('Sending payload to ' + action);
   let idToken = null;
   try { if (typeof liff !== 'undefined' && liff.getIDToken) idToken = liff.getIDToken(); } catch (e) { /* ยังไม่ login */ }
-  if (idToken && ftTokenExpired()) {
-    if (ftIsReadAction(action) && ftRelogin()) throw new Error('กำลังเข้าสู่ระบบใหม่…');
-    throw new Error(FT_AUTH_EXPIRED_MSG);
-  }
   // ตัดจบตั้งแต่ที่นี่ถ้าไม่มี token — ACL ฝั่ง backend ไม่มี action ไหนเปิดให้ไม่ login เลย
   // ยิงไปก็โดนปฏิเสธด้วยข้อความกลางๆ 'ยืนยันตัวตน LINE ไม่สำเร็จ' ซึ่งแยกสาเหตุไม่ออก
   // getIDToken() คืน null ได้ 2 กรณี: (1) liff.init() ยังไม่เสร็จ หรือยังไม่ login
@@ -68,9 +60,11 @@ async function ftCallBackend(action, data, log) {
   });
   if (!res.ok) throw new Error('เซิร์ฟเวอร์ตอบ HTTP ' + res.status);
   const json = await res.json();
-  // token ยังไม่ถึง exp ฝั่งเรา แต่ LINE บอกว่าใช้ไม่ได้แล้ว (นาฬิกาเครื่องเพี้ยน / ถูก revoke)
-  if (json && json.status === 'error' && /ยืนยันตัวตน LINE/.test(json.message || '')) {
-    if (ftIsReadAction(action) && ftRelogin()) throw new Error('กำลังเข้าสู่ระบบใหม่…');
+  // token หมดอายุ / ถูก revoke — ข้อความเป็น fallback สำหรับ backend เวอร์ชันก่อนมี code
+  const authFailed = json && json.status === 'error' &&
+    (json.code === 'AUTH_INVALID' || (!json.code && /ยืนยันตัวตน LINE/.test(json.message || '')));
+  if (authFailed) {
+    if (ftIsReadAction(action) && !(opts && opts.noRelogin) && ftRelogin()) throw new Error('กำลังเข้าสู่ระบบใหม่…');
     throw new Error(FT_AUTH_EXPIRED_MSG);
   }
   try { sessionStorage.removeItem(FT_RELOGIN_KEY); } catch (e) {}
