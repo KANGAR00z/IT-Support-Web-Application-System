@@ -326,7 +326,7 @@ function render() {
           <span class="w-2.5 h-2.5 rounded-full shrink-0 ${col.dot}"></span><span class="truncate">${col.title}</span>
           <span class="text-slate-400 font-normal text-sm hidden sm:inline">(${col.en})</span>
         </div>
-        <span class="text-sm font-bold shrink-0 ${items.length !== r.total ? 'text-blue-600' : 'text-slate-400'}">${items.length !== r.total ? items.length + '/' + r.total : r.total}</span>
+        <span class="text-sm font-bold shrink-0 ${items.length !== r.total ? 'text-brand-600' : 'text-slate-400'}">${items.length !== r.total ? items.length + '/' + r.total : r.total}</span>
       </div>
       <div class="col-scroll flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-3" data-drop="${col.status}"></div>
     `;
@@ -339,7 +339,7 @@ function render() {
       visible.forEach(t => list.appendChild(cardEl(t)));
       if (items.length > visible.length) {
         const more = document.createElement('button');
-        more.className = 'shrink-0 w-full text-xs font-semibold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg py-2.5 min-h-[40px]';
+        more.className = 'shrink-0 w-full text-xs font-semibold text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg py-2.5 min-h-[40px]';
         more.textContent = `แสดงเพิ่ม (เหลืออีก ${items.length - visible.length})`;
         more.addEventListener('click', () => { colLimit[col.status] = limit + BOARD_PAGE; render(); });
         list.appendChild(more);
@@ -379,7 +379,7 @@ function fillSelect(el, values, cur, allLabel) {
 
 const toggleBtn = (el, on) => {
   if (!el) return;
-  el.classList.toggle('bg-blue-600', on);
+  el.classList.toggle('bg-brand-600', on);
   el.classList.toggle('text-white', on);
   el.classList.toggle('bg-slate-100', !on);
   el.classList.toggle('text-slate-600', !on);
@@ -455,13 +455,13 @@ function cardEl(t) {
   // จึงทำเป็นปุ่มมีพื้นหลัง + เป้ากดใหญ่ (.card-act) ไม่ใช่ตัวหนังสือเปล่าๆ
   let action = '';
   if (t.status === STATUS.OPEN) {
-    action = `<button data-act="accept" class="card-act bg-blue-50 text-blue-700 hover:bg-blue-100 font-semibold">รับงาน →</button>`;
+    action = `<button data-act="accept" class="card-act bg-brand-50 text-brand-700 hover:bg-brand-100 font-semibold inline-flex items-center gap-1">รับงาน${icon('arrow-right', 'w-3.5 h-3.5')}</button>`;
   } else if (t.status === STATUS.IN_PROGRESS) {
-    action = `<button data-act="close" class="card-act bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold">ปิดงาน ✓</button>`;
+    action = `<button data-act="close" class="card-act bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-semibold inline-flex items-center gap-1">${icon('check', 'w-3.5 h-3.5')}ปิดงาน</button>`;
   } else {
     action = t.pdfUrl
-      ? `<button data-act="pdf" class="card-act bg-slate-100 text-slate-600 hover:text-blue-700 font-medium inline-flex items-center gap-1">📄 ดูเอกสาร</button>`
-      : `<button data-act="reopen" class="card-act bg-slate-100 text-slate-500 hover:text-slate-700 font-medium">↩ เปิดใหม่</button>`;
+      ? `<button data-act="pdf" class="card-act bg-slate-100 text-slate-600 hover:text-brand-700 font-medium inline-flex items-center gap-1">${icon('file-text', 'w-3.5 h-3.5')}ดูเอกสาร</button>`
+      : `<button data-act="reopen" class="card-act bg-slate-100 text-slate-500 hover:text-slate-700 font-medium inline-flex items-center gap-1">${icon('rotate-ccw', 'w-3.5 h-3.5')}เปิดใหม่</button>`;
   }
 
   el.innerHTML = `
@@ -475,11 +475,11 @@ function cardEl(t) {
     <p class="tk-detail text-sm text-slate-700 leading-snug mb-3">${escapeHtml(t.detail)}</p>
     <div class="tk-meta flex items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
       <span class="inline-flex items-center gap-1 min-w-0">
-        <span class="shrink-0">👤</span><span class="truncate">${escapeHtml(t.assignee || t.reporter)}</span>
+        ${icon('user', 'w-3.5 h-3.5')}<span class="truncate">${escapeHtml(t.assignee || t.reporter)}</span>
       </span>
       ${action}
     </div>
-    ${timeLine ? `<div class="tk-time text-[11px] text-slate-400 mt-1.5 inline-flex items-center gap-1">🕒 ${timeLine}</div>` : ''}
+    ${timeLine ? `<div class="tk-time text-[11px] text-slate-400 mt-1.5 inline-flex items-center gap-1">${icon('clock', 'w-3.5 h-3.5')}${timeLine}</div>` : ''}
   `;
 
   el.addEventListener('dragstart', (e) => {
@@ -509,7 +509,7 @@ async function moveTicket(id, toStatus, resolutionText) {
 
   const isAccept = (t.status === STATUS.OPEN && toStatus === STATUS.IN_PROGRESS);
   if (isAccept && !currentStaffId) {
-    alert('ต้องเข้าสู่ระบบ LINE ก่อนจึงจะรับงานได้');
+    ftToast('ต้องเข้าสู่ระบบ LINE ก่อนจึงจะรับงานได้', 'info');
     ensureLogin();
     return;
   }
@@ -544,13 +544,13 @@ async function moveTicket(id, toStatus, resolutionText) {
         if (!kbRes || kbRes.status !== 'success') throw new Error((kbRes && kbRes.message) || 'ไม่ทราบสาเหตุ');
         kbLoaded = false;   // บังคับให้โหลดใหม่ครั้งถัดไปที่เข้าหน้า Knowledge Base
       } catch (kbErr) {
-        alert('⚠️ ปิดงานสำเร็จ แต่บันทึกประวัติวิธีแก้ไขไม่สำเร็จ: ' + kbErr.message);
+        ftToast('ปิดงานสำเร็จ แต่บันทึกประวัติวิธีแก้ไขไม่สำเร็จ: ' + kbErr.message, 'error');
       }
     }
   } catch (e) {
     Object.assign(t, prev); // revert
     render();
-    alert('❌ บันทึกไม่สำเร็จ: ' + e.message);
+    ftToast('บันทึกไม่สำเร็จ: ' + e.message, 'error');
   }
 }
 
@@ -614,13 +614,13 @@ async function loadMyProfile() {
 // ด้วย token หมดอายุ liff.login() เฉยๆ จะคืนใบเดิมกลับมา · redirectUri = หน้าปัจจุบัน
 // ไม่งั้นตอน fallback เป็น MY_LIFF_ID จะเด้งกลับไป index.html
 function ensureLogin() {
-  if (typeof liff === 'undefined' || !liff.login) return alert('โหลด LINE SDK ไม่สำเร็จ');
-  if (!ftRelogin(true)) alert('เรียกหน้าเข้าสู่ระบบ LINE ไม่สำเร็จ');
+  if (typeof liff === 'undefined' || !liff.login) return ftToast('โหลด LINE SDK ไม่สำเร็จ', 'error');
+  if (!ftRelogin(true)) ftToast('เรียกหน้าเข้าสู่ระบบ LINE ไม่สำเร็จ', 'error');
 }
 
 // ---------- PDF ----------
 function openPdf(t) {
-  if (!t.pdfUrl) { alert('ตั๋วนี้ยังไม่มีไฟล์เอกสาร'); return; }
+  if (!t.pdfUrl) { ftToast('ตั๋วนี้ยังไม่มีไฟล์เอกสาร', 'info'); return; }
   const preview = t.pdfUrl.replace('/view?usp=drivesdk','/preview').replace('/view','/preview');
   $('pdfTitle').innerText = 'บันทึกข้อความ · ' + t.code;
   $('pdfFrame').src = preview;
@@ -711,7 +711,7 @@ function renderDashboard() {
   // agingDays ตั้งค่าได้ที่หน้า Settings (ค่าเริ่มต้น 3 วัน) — เก็บใน localStorage ต่อเบราว์เซอร์
   const aging = open.filter(t => { const c = parseT(t.createdAt); return c && (now - c) > agingDays * DAY_MS; });
   $('slaAging').innerText = aging.length;
-  $('slaAgingLabel').innerText = `🔥 ค้างเกิน ${agingDays} วัน (ยังไม่รับ)`;
+  $('slaAgingLabel').innerText = `ค้างเกิน ${agingDays} วัน (ยังไม่รับ)`;
 
   // ---- หมวดหมู่ / พื้นที่ / เจ้าหน้าที่ ----
   const cats = countBy(all, t => t.category || 'ไม่ระบุ');
@@ -737,7 +737,7 @@ function renderDashboard() {
   // ---- ตั๋วค้างนาน ----
   const agingBody = $('agingBody');
   const oldest = [...open].filter(t => parseT(t.createdAt)).sort((a, b) => parseT(a.createdAt) - parseT(b.createdAt)).slice(0, 6);
-  agingBody.innerHTML = oldest.length ? '' : `<tr><td colspan="4" class="py-3 text-xs" style="color:var(--ink-muted)">ไม่มีตั๋วค้าง 🎉</td></tr>`;
+  agingBody.innerHTML = oldest.length ? '' : `<tr><td colspan="4" class="py-3 text-xs" style="color:var(--ink-muted)"><span class="inline-flex items-center gap-1">${icon('circle-check', 'w-3.5 h-3.5')}ไม่มีตั๋วค้าง</span></td></tr>`;
   oldest.forEach(t => {
     const days = (now - parseT(t.createdAt)) / DAY_MS;
     const hot = days > agingDays;
@@ -749,7 +749,7 @@ function renderDashboard() {
       <td class="py-2 pr-3 sm:max-w-[22rem] truncate" style="color:var(--ink-2)">${escapeHtml(t.detail)}</td>
       <td class="py-2 pr-3 text-xs whitespace-nowrap hidden sm:table-cell" style="color:var(--ink-muted)">${escapeHtml(normProv(t.province || t.branch) || '-')}</td>
       <td class="py-2 pr-3 text-right whitespace-nowrap tabular-nums text-xs font-semibold"
-          style="color:${hot ? 'var(--st-open)' : 'var(--ink-2)'}">${hot ? '🔥 ' : ''}${timeAgo(t.createdAt).replace('ที่แล้ว','').trim()}</td>`;
+          style="color:${hot ? 'var(--st-open)' : 'var(--ink-2)'}">${hot ? icon('flame', 'w-3.5 h-3.5 inline -mt-0.5 mr-0.5') : ''}${timeAgo(t.createdAt).replace('ที่แล้ว','').trim()}</td>`;
     agingBody.appendChild(tr);
   });
 
@@ -924,6 +924,7 @@ function normalizeUser(u) {
 }
 
 async function loadUsers() {
+  if (!usersLoaded) $('usersBody').innerHTML = `<tr><td colspan="9" class="px-2">${ftSkeleton('row', 5)}</td></tr>`;
   await liffReady;   // ดูคอมเมนต์ที่ liffReady
   try {
     const res = await callBackend('getUsers', {});
@@ -971,7 +972,7 @@ function renderUsers() {
   const chips = [['all','ทั้งหมด'], ['admin',ROLES.admin.label], ['it',ROLES.it.label], ['staff',ROLES.staff.label]];
   $('roleChips').innerHTML = chips.map(([k, label]) =>
     `<button data-role="${k}" class="px-2.5 py-1 rounded-full border transition-colors ${
-      userRoleFilter === k ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+      userRoleFilter === k ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
     }">${label}</button>`).join('');
   $('roleChips').querySelectorAll('button').forEach(b =>
     b.addEventListener('click', () => { userRoleFilter = b.dataset.role; renderUsers(); }));
@@ -1001,9 +1002,9 @@ function renderUsers() {
     tr.innerHTML = `
       <td class="py-2.5 pr-3">
         <div class="flex items-center gap-2.5">
-          <span class="w-8 h-8 rounded-full bg-blue-600 text-white text-xs font-bold flex items-center justify-center shrink-0">${escapeHtml(u.name.trim().charAt(0) || '?')}</span>
+          <span class="w-8 h-8 rounded-full bg-brand-600 text-white text-xs font-bold flex items-center justify-center shrink-0">${escapeHtml(u.name.trim().charAt(0) || '?')}</span>
           <div class="min-w-0">
-            <div class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(u.name)}${isMe ? ' <span class="text-[10px] font-normal text-blue-600">(คุณ)</span>' : ''}</div>
+            <div class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(u.name)}${isMe ? ' <span class="text-[10px] font-normal text-brand-600">(คุณ)</span>' : ''}</div>
             <div class="text-[10px] truncate hidden lg:block" style="color:var(--ink-muted)">${escapeHtml(u.userId)}</div>
             <div class="text-[10px] truncate lg:hidden" style="color:var(--ink-muted)">${escapeHtml(u.position)}${u.branch ? ' · ' + escapeHtml(u.branch) : ''}</div>
             <div class="text-[10px] truncate sm:hidden" style="color:var(--ink-muted)">แจ้งซ่อม ${u.reported} · รับผิดชอบ ${u.assigned}</div>
@@ -1021,7 +1022,7 @@ function renderUsers() {
       <td class="py-2.5 pr-3 text-right tabular-nums text-xs hidden sm:table-cell" style="color:var(--ink-2)">${u.assigned}</td>
       <td class="py-2.5 pl-3 text-right">${
         editable
-          ? `<select data-uid="${escapeHtml(u.userId)}" class="role-select w-full sm:w-auto border border-slate-300 rounded-lg px-2 py-1.5 sm:py-1 text-xs bg-white outline-none focus:ring-2 focus:ring-blue-500">
+          ? `<select data-uid="${escapeHtml(u.userId)}" class="role-select w-full sm:w-auto border border-slate-300 rounded-lg px-2 py-1.5 sm:py-1 text-xs bg-white outline-none focus:ring-2 focus:ring-brand-500">
                ${Object.entries(ROLES).map(([k, r]) => `<option value="${k}" ${k === u.role ? 'selected' : ''}>${r.label}</option>`).join('')}
              </select>`
           : `<span class="text-[10px]" style="color:var(--ink-muted)">—</span>`
@@ -1039,9 +1040,9 @@ async function changeRole(userId, newRole) {
 
   const isSelfDemote = userId === currentStaffId && newRole !== 'admin';
   const msg = isSelfDemote
-    ? `⚠️ กำลังลดสิทธิ์ "บัญชีของคุณเอง" เป็น ${ROLES[newRole].label} — จะแก้บทบาทใครไม่ได้อีกจนกว่าแอดมินคนอื่นจะคืนสิทธิ์ให้\n\nยืนยันหรือไม่?`
+    ? `กำลังลดสิทธิ์ "บัญชีของคุณเอง" เป็น ${ROLES[newRole].label} — จะแก้บทบาทใครไม่ได้อีกจนกว่าแอดมินคนอื่นจะคืนสิทธิ์ให้\n\nยืนยันหรือไม่?`
     : `เปลี่ยนบทบาทของ "${u.name}" เป็น ${ROLES[newRole].label}?`;
-  if (!confirm(msg)) { renderUsers(); return; }   // วาดใหม่ให้ select เด้งกลับค่าเดิม
+  if (!(await ftConfirm(msg, { title: 'เปลี่ยนบทบาท', confirmText: 'เปลี่ยนบทบาท', danger: isSelfDemote, icon: 'users' }))) { renderUsers(); return; }   // วาดใหม่ให้ select เด้งกลับค่าเดิม
 
   const prevRole = u.role;
   u.role = newRole;         // optimistic
@@ -1055,7 +1056,7 @@ async function changeRole(userId, newRole) {
   } catch (e) {
     u.role = prevRole;      // revert
     renderUsers();
-    alert('❌ เปลี่ยนบทบาทไม่สำเร็จ: ' + e.message);
+    ftToast('เปลี่ยนบทบาทไม่สำเร็จ: ' + e.message, 'error');
   }
 }
 
@@ -1084,6 +1085,7 @@ function normalizeKb(a) {
 }
 
 async function loadKB() {
+  if (!kbLoaded) $('kbList').innerHTML = ftSkeleton('card', 3);
   await liffReady;   // ดูคอมเมนต์ที่ liffReady
   try {
     const res = await callBackend('getKnowledgeBase', {});
@@ -1112,7 +1114,7 @@ function renderKB() {
     const label = c === 'all' ? 'ทั้งหมด' : c;
     const active = kbCatFilter === c;
     return `<button data-cat="${escapeHtml(c)}" class="px-2.5 py-1 rounded-full border transition-colors ${
-      active ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
+      active ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'
     }">${escapeHtml(label)}</button>`;
   }).join('');
   $('kbCatChips').querySelectorAll('button').forEach(b =>
@@ -1139,9 +1141,9 @@ function renderKB() {
           <span class="text-[11px] px-2 py-0.5 rounded-full ${catColor(a.category)}">${escapeHtml(a.category)}</span>
         </div>
         <div class="flex items-center gap-2 shrink-0">
-          ${a.pdfUrl ? `<button data-pdf="${a.id}" class="text-xs text-blue-600 hover:underline whitespace-nowrap">📄 เอกสารต้นฉบับ</button>` : ''}
-          <button data-edit="${a.id}" class="text-xs text-slate-500 hover:text-blue-600 min-h-[32px] px-1.5" title="แก้ไข">✏️</button>
-          <button data-del="${a.id}" class="text-xs text-slate-500 hover:text-red-600 min-h-[32px] px-1.5" title="ลบ">🗑️</button>
+          ${a.pdfUrl ? `<button data-pdf="${a.id}" class="text-xs text-brand-600 hover:underline whitespace-nowrap inline-flex items-center gap-1">${icon('file-text', 'w-3.5 h-3.5')}เอกสารต้นฉบับ</button>` : ''}
+          <button data-edit="${a.id}" class="text-xs text-slate-500 hover:text-brand-600 min-h-[32px] px-1.5" title="แก้ไข" aria-label="แก้ไข">${icon('pencil')}</button>
+          <button data-del="${a.id}" class="text-xs text-slate-500 hover:text-red-600 min-h-[32px] px-1.5" title="ลบ" aria-label="ลบ">${icon('trash-2')}</button>
         </div>
       </div>
       ${a.detail ? `<div class="text-xs mb-1.5" style="color:var(--ink-muted)">อาการ: ${escapeHtml(a.detail)}</div>` : ''}
@@ -1174,7 +1176,7 @@ async function saveKbEdit() {
   const kbId = pendingKbEditId;
   const text = $('kbEditResolution').value.trim();
   if (!kbId) return;
-  if (!text) { alert('วิธีแก้ไขปัญหาห้ามว่าง'); return; }
+  if (!text) { ftToast('วิธีแก้ไขปัญหาห้ามว่าง', 'error'); return; }
 
   // optimistic update
   const a = kbArticles.find(x => x.id === kbId);
@@ -1191,13 +1193,13 @@ async function saveKbEdit() {
   } catch (e) {
     if (a) a.resolution = prevText;  // revert
     renderKB();
-    alert('❌ แก้ไขบทความไม่สำเร็จ: ' + e.message);
+    ftToast('แก้ไขไม่สำเร็จ: ' + e.message, 'error');
   }
 }
 
 // ---------- ลบบทความ KB ----------
 async function deleteKbArticle(article) {
-  if (!confirm(`ลบประวัติ ${article.ticketCode} ออกจากรายการ?\n\nตั๋วต้นฉบับจะไม่ถูกกระทบ แต่วิธีแก้ไขปัญหานี้จะหายไปถาวร`)) return;
+  if (!(await ftConfirm('ตั๋วต้นฉบับจะไม่ถูกกระทบ แต่วิธีแก้ไขปัญหานี้จะหายไปถาวร', { title: `ลบประวัติ ${article.ticketCode}?`, confirmText: 'ลบ', danger: true, icon: 'trash-2' }))) return;
 
   // optimistic remove
   const idx = kbArticles.findIndex(x => x.id === article.id);
@@ -1212,7 +1214,7 @@ async function deleteKbArticle(article) {
   } catch (e) {
     if (removed && idx >= 0) kbArticles.splice(idx, 0, removed);  // revert
     renderKB();
-    alert('❌ ลบบทความไม่สำเร็จ: ' + e.message);
+    ftToast('ลบไม่สำเร็จ: ' + e.message, 'error');
   }
 }
 
@@ -1233,7 +1235,7 @@ let masterEditing = null;   // { type, id } — id = null คือเพิ่�
 
 async function loadMaster() {
   await liffReady;
-  $('masterList').innerHTML = '<div class="py-6 text-center text-xs" style="color:var(--ink-muted)">กำลังโหลด...</div>';
+  if (!masterLoaded) $('masterList').innerHTML = ftSkeleton('row', 5);
   try {
     const res = await callBackend('getMasterData', { withUsage: true });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend');
@@ -1261,7 +1263,7 @@ function renderMaster() {
   document.querySelectorAll('.master-tab').forEach(b => {
     const on = b.dataset.tab === masterTab;
     b.className = 'master-tab px-3 py-1.5 rounded-full border transition-colors ' +
-      (on ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50');
+      (on ? 'bg-brand-600 text-white border-brand-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50');
     b.innerText = MASTER_TYPES[b.dataset.tab].label + ' (' + masterData[MASTER_TYPES[b.dataset.tab].key].length + ')';
   });
   $('masterAddLabel').innerText = MASTER_TYPES[masterTab].label;
@@ -1285,9 +1287,9 @@ function renderMaster() {
         ${sub ? `<div class="text-[11px] truncate" style="color:var(--ink-muted)">${escapeHtml(sub)}</div>` : ''}
       </div>
       <span class="text-[11px] shrink-0 text-right max-w-[40%]" style="color:var(--ink-muted)">${escapeHtml(usageText(r))}</span>
-      <button data-act="edit" class="text-xs text-slate-500 hover:text-blue-600 min-h-[36px] px-1.5 shrink-0" title="แก้ไข">✏️</button>
+      <button data-act="edit" class="text-xs text-slate-500 hover:text-brand-600 min-h-[36px] px-1.5 shrink-0" title="แก้ไข" aria-label="แก้ไข">${icon('pencil')}</button>
       <button data-act="del" class="text-xs min-h-[36px] px-1.5 shrink-0 ${r.used ? 'opacity-30 cursor-not-allowed' : 'text-slate-500 hover:text-red-600'}"
-              title="${r.used ? 'ลบไม่ได้ — ยังถูกใช้อยู่' : 'ลบ'}">🗑️</button>`;
+              title="${r.used ? 'ลบไม่ได้ — ยังถูกใช้อยู่' : 'ลบ'}" aria-label="ลบ">${icon('trash-2')}</button>`;
     el.querySelector('[data-act="edit"]').addEventListener('click', () => openMasterModal(masterTab, r));
     el.querySelector('[data-act="del"]').addEventListener('click', () => deleteMaster(masterTab, r));
     box.appendChild(el);
@@ -1297,7 +1299,7 @@ function renderMaster() {
 function openMasterModal(type, row) {
   masterEditing = { type, id: row ? row.id : null };
   const label = MASTER_TYPES[type].label;
-  $('masterModalTitle').innerText = (row ? '✏️ แก้ไข' : '＋ เพิ่ม') + label;
+  $('masterModalTitle').innerHTML = icon(row ? 'pencil' : 'plus', 'w-5 h-5 text-brand-600') + escapeHtml((row ? 'แก้ไข' : 'เพิ่ม') + label);
   $('masterModalSub').innerText = row && row.used
     ? `ถูกใช้อยู่ใน ${usageText(row)} — ชื่อที่แก้จะมีผลกับข้อมูลเดิมทั้งหมดด้วย`
     : 'จะแสดงเป็นตัวเลือกในฟอร์มแจ้งซ่อม';
@@ -1338,9 +1340,10 @@ async function saveMaster() {
     const res = await callBackend(id ? 'updateMasterItem' : 'addMasterItem', { type, id, item });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'บันทึกไม่สำเร็จ');
     closeMasterModal();
+    ftToast(res.message || 'บันทึกแล้ว', 'success');
     await loadMaster();
   } catch (e) {
-    showErr('❌ ' + e.message);
+    showErr(e.message);
     if (isAuthError(e)) setAuthExpired(true);
   } finally {
     btn.disabled = false;
@@ -1351,16 +1354,17 @@ async function saveMaster() {
 async function deleteMaster(type, row) {
   const label = MASTER_TYPES[type].label;
   if (row.used) {
-    alert(`ลบ${label} "${row.name}" ไม่ได้ เพราะยังถูกใช้อยู่ใน ${usageText(row)}\n\nข้อมูลเดิม (ตั๋ว/ผู้ใช้) ต้องยังแสดงชื่อได้ถูกต้อง แก้ชื่อแทนได้`);
+    ftAlert(`ยังถูกใช้อยู่ใน ${usageText(row)}\n\nข้อมูลเดิม (ตั๋ว/ผู้ใช้) ต้องยังแสดงชื่อได้ถูกต้อง แก้ชื่อแทนได้`, { title: `ลบ${label} "${row.name}" ไม่ได้`, icon: 'lock' });
     return;
   }
-  if (!confirm(`ลบ${label} "${row.name}"?\n\nจะหายจากตัวเลือกในฟอร์มแจ้งซ่อมทันที`)) return;
+  if (!(await ftConfirm('จะหายจากตัวเลือกในฟอร์มแจ้งซ่อมทันที', { title: `ลบ${label} "${row.name}"?`, confirmText: 'ลบ', danger: true, icon: 'trash-2' }))) return;
   try {
     const res = await callBackend('deleteMasterItem', { type, id: row.id });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ลบไม่สำเร็จ');
+    ftToast(res.message || 'ลบแล้ว', 'success');
     await loadMaster();
   } catch (e) {
-    alert('❌ ' + e.message);
+    ftToast(e.message, 'error');
     if (isAuthError(e)) setAuthExpired(true);
   }
 }
@@ -1377,7 +1381,7 @@ function renderSettings() {
     box.innerHTML = `
       <div class="text-sm" style="color:var(--ink-2)">ยังไม่ได้เข้าสู่ระบบ LINE</div>
       ${liffError ? `<div class="text-xs mt-1 text-red-600 break-words">สาเหตุ: ${escapeHtml(liffError)}</div>` : ''}
-      <button id="settingsLoginBtn" class="mt-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-blue-600 text-white hover:bg-blue-700">เข้าสู่ระบบ LINE</button>
+      <button id="settingsLoginBtn" class="mt-2 px-3 py-1.5 rounded-lg text-sm font-medium bg-brand-600 text-white hover:bg-brand-700">เข้าสู่ระบบ LINE</button>
     `;
     $('settingsLoginBtn').addEventListener('click', ensureLogin);
     return;
@@ -1385,7 +1389,7 @@ function renderSettings() {
   const displayName = (staffProfile && staffProfile.name) || currentStaff || '-';
   const avatarHtml = staffPicUrl
     ? `<img src="${escapeHtml(staffPicUrl)}" alt="" class="w-12 h-12 rounded-full object-cover shrink-0">`
-    : `<span class="w-12 h-12 rounded-full bg-blue-600 text-white text-sm font-bold flex items-center justify-center shrink-0">${escapeHtml(displayName.trim().charAt(0) || '?')}</span>`;
+    : `<span class="w-12 h-12 rounded-full bg-brand-600 text-white text-sm font-bold flex items-center justify-center shrink-0">${escapeHtml(displayName.trim().charAt(0) || '?')}</span>`;
   const sp = staffProfile || {};
   const role = me ? me.role : (sp.role ? roleOf(sp.role) : null);
   const infoParts = [sp.position, sp.dept, sp.branch].filter(Boolean);
@@ -1406,8 +1410,8 @@ function renderSettings() {
   $('settingsLogoutBtn').addEventListener('click', doLogout);
 }
 
-function doLogout() {
-  if (!confirm('ออกจากระบบ LINE บนเบราว์เซอร์นี้?')) return;
+async function doLogout() {
+  if (!(await ftConfirm('ออกจากระบบ LINE บนเบราว์เซอร์นี้?', { title: 'ออกจากระบบ', confirmText: 'ออกจากระบบ', icon: 'lock' }))) return;
   localStorage.removeItem('ft_staff');
   localStorage.removeItem('ft_staff_id');
   localStorage.removeItem('ft_staff_pic');
@@ -1484,7 +1488,7 @@ $('kbEditModal').addEventListener('click', (e) => { if (e.target === $('kbEditMo
 document.querySelectorAll('.master-tab').forEach(b =>
   b.addEventListener('click', () => { masterTab = b.dataset.tab; renderMaster(); }));
 $('masterAddBtn').addEventListener('click', () => {
-  if (masterTab === 'dept' && !masterData.branches.length) return alert('ต้องมีพื้นที่อย่างน้อย 1 รายการก่อนเพิ่มสาขา');
+  if (masterTab === 'dept' && !masterData.branches.length) return ftToast('ต้องมีพื้นที่อย่างน้อย 1 รายการก่อนเพิ่มสาขา', 'info');
   openMasterModal(masterTab, null);
 });
 $('masterCancelBtn').addEventListener('click', closeMasterModal);

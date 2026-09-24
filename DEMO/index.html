@@ -11,6 +11,7 @@
   
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
+  <script src="theme.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
   <script src="config.js"></script>
@@ -43,11 +44,19 @@
     <div class="font-bold text-lg text-slate-800">แจ้งซ่อมใหม่ (FAST TICKET)</div>
   </div>
 
-  <div class="main-scroll flex-1 overflow-y-auto bg-slate-50 relative">
+  <div id="mainScroll" class="main-scroll flex-1 overflow-y-auto bg-slate-50 relative">
     
-    <div id="loading" class="app-w flex flex-col items-center justify-center p-10">
-      <div class="w-8 h-8 border-4 border-[#00B900] border-t-transparent rounded-full animate-spin mb-3"></div>
-      <p class="text-slate-500 text-sm">กำลังเชื่อมต่อ LINE...</p>
+    <div id="loading" class="app-w" role="status" aria-label="กำลังเชื่อมต่อ LINE">
+      <div class="bg-white p-4 sm:p-5 mb-3 border-b border-slate-100 space-y-3">
+        <div class="flex items-center gap-3"><div class="w-12 h-12 rounded-full animate-pulse bg-slate-200 shrink-0"></div>
+          <div class="space-y-2 flex-1"><div class="animate-pulse bg-slate-200 rounded h-4 w-32"></div><div class="animate-pulse bg-slate-200 rounded h-3 w-20"></div></div></div>
+        <div class="bg-slate-50 rounded-xl p-3 space-y-2.5"><div class="animate-pulse bg-slate-200 rounded h-3 w-3/4"></div><div class="animate-pulse bg-slate-200 rounded h-3 w-1/2"></div><div class="animate-pulse bg-slate-200 rounded h-3 w-2/3"></div></div>
+      </div>
+      <div class="p-4 sm:p-5 space-y-5">
+        <div class="space-y-2"><div class="animate-pulse bg-slate-200 rounded h-3.5 w-40"></div><div class="animate-pulse bg-slate-200 rounded h-12 w-full"></div></div>
+        <div class="space-y-2"><div class="animate-pulse bg-slate-200 rounded h-3.5 w-28"></div><div class="animate-pulse bg-slate-200 rounded h-12 w-full"></div></div>
+        <div class="space-y-2"><div class="animate-pulse bg-slate-200 rounded h-3.5 w-36"></div><div class="animate-pulse bg-slate-200 rounded h-28 w-full"></div></div>
+      </div>
     </div>
 
     <div id="formContainer" class="app-w hidden">
@@ -55,9 +64,9 @@
       <div class="bg-white p-4 sm:p-5 mb-3 border-b border-slate-100 shadow-sm relative">
         <div class="flex justify-between items-start mb-3">
           <div class="flex items-center space-x-3">
-            <div class="w-12 h-12 rounded-full bg-blue-100 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center shrink-0">
+            <div class="w-12 h-12 rounded-full bg-brand-100 border-2 border-white shadow-sm overflow-hidden flex items-center justify-center shrink-0">
               <img id="profileImage" src="" alt="Profile" class="w-full h-full object-cover hidden">
-              <span id="profileFallback" class="text-blue-600 font-bold">U</span>
+              <span id="profileFallback" class="text-brand-600 font-bold">U</span>
             </div>
             <div>
               <div class="font-bold text-slate-800 text-base">ข้อมูลผู้แจ้งซ่อม</div>
@@ -66,7 +75,7 @@
           </div>
           <button type="button" id="toggleEditBtn" aria-label="แก้ไขข้อมูลผู้แจ้ง"
                   class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors">
-            ✏️
+            <span data-icon="pencil" data-icon-class="w-5 h-5"></span>
           </button>
         </div>
 
@@ -78,7 +87,7 @@
             <div class="col-span-2 text-slate-800" id="dispPosition">เจ้าหน้าที่ทั่วไป</div>
             <div class="text-slate-500">พื้นที่/สาขา:</div>
             <div class="col-span-2 text-slate-800 flex items-center">
-              <span class="w-1.5 h-1.5 rounded-full bg-[#00B900] mr-2"></span>
+              <span class="w-1.5 h-1.5 rounded-full bg-brand-500 mr-2"></span>
               <span id="dispDept">สำนักงานสรรพสามิตภาคที่ 9</span>
             </div>
             <div class="text-slate-500">ส่วน/แผนก:</div>
@@ -92,15 +101,15 @@
           <input type="hidden" id="lineUserId">
           <div>
             <label class="text-xs font-medium text-slate-500">ชื่อจริง - นามสกุลจริง <span class="text-red-500">*</span></label>
-            <input type="text" id="inputName" placeholder="เช่น สมชาย ใจดี (ห้ามใช้ชื่อ LINE)" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <input type="text" id="inputName" placeholder="เช่น สมชาย ใจดี (ห้ามใช้ชื่อ LINE)" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
           </div>
           <div>
             <label class="text-xs font-medium text-slate-500">ตำแหน่ง</label>
-            <input type="text" id="inputPosition" value="เจ้าหน้าที่ทั่วไป" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <input type="text" id="inputPosition" value="เจ้าหน้าที่ทั่วไป" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
           </div>
           <div>
             <label class="text-xs font-medium text-slate-500">สาขา / พื้นที่ (Branch)</label>
-            <select id="inputDept" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <select id="inputDept" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
               <option value="1" data-branch="1">สำนักงานสรรพสามิตภาคที่ 9</option>
               <optgroup label="1. พื้นที่สงขลา">
                 <option value="2" data-branch="2">สาขาเมืองสงขลา</option>
@@ -135,7 +144,7 @@
           </div>
           <div>
             <label class="text-xs font-medium text-slate-500">ส่วน / แผนก (Department)</label>
-            <select id="inputDepartment" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
+            <select id="inputDepartment" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
               <option value="1">ส่วนอำนวยการ</option>
               <option value="2">ส่วนบริหารจัดเก็บภาษี</option>
               <option value="3">ส่วนตรวจสอบ ป้องกันและปราบปราม</option>
@@ -145,7 +154,7 @@
           </div>
           <div>
             <label class="text-xs font-medium text-slate-500">เบอร์โทรศัพท์ภายใน (ถ้ามี)</label>
-            <input type="text" id="inputPhone" inputmode="tel" placeholder="เช่น 64305" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none">
+            <input type="text" id="inputPhone" inputmode="tel" placeholder="เช่น 64305" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
           </div>
         </div>
       </div>
@@ -153,23 +162,23 @@
       <form id="ticketForm" class="p-4 sm:p-5 space-y-5">
         <div class="space-y-1.5">
           <label class="block text-sm font-bold text-slate-700">เลขครุภัณฑ์ / รหัสเครื่อง (ถ้ามี)</label>
-          <input type="text" id="assetId" placeholder="เช่น PC-2023-001" class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all shadow-sm">
+          <input type="text" id="assetId" placeholder="เช่น PC-2023-001" class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm">
         </div>
 
         <div class="space-y-1.5">
           <label class="block text-sm font-bold text-slate-700">หมวดหมู่ปัญหา <span class="text-red-500">*</span></label>
-          <select id="category" required class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all shadow-sm">
+          <select id="category" required class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm">
             <option value="" disabled selected>-- เลือกหมวดหมู่ --</option>
-            <option value="1">💻 ฮาร์ดแวร์ (Hardware)</option>
-            <option value="2">💿 ซอฟต์แวร์ (Software)</option>
-            <option value="3">🌐 เครือข่าย (Network)</option>
-            <option value="4">❓ อื่นๆ (Others)</option>
+            <option value="1">ฮาร์ดแวร์ (Hardware)</option>
+            <option value="2">ซอฟต์แวร์ (Software)</option>
+            <option value="3">เครือข่าย (Network)</option>
+            <option value="4">อื่นๆ (Others)</option>
           </select>
         </div>
 
         <div class="space-y-1.5">
           <label class="block text-sm font-bold text-slate-700">รายละเอียดอาการเสีย <span class="text-red-500">*</span></label>
-          <textarea id="description" required placeholder="อธิบายอาการที่พบ เช่น เปิดคอมไม่ติด หน้าจอกระพริบ..." class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 h-28 resize-none focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all shadow-sm"></textarea>
+          <textarea id="description" required placeholder="อธิบายอาการที่พบ เช่น เปิดคอมไม่ติด หน้าจอกระพริบ..." class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 h-28 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm"></textarea>
         </div>
         
         <div class="h-4"></div>
@@ -192,9 +201,10 @@
   
   <!-- แถบล่างสุดของหน้า -> เป็นตัวที่ต้องกัน home indicator ของ iPhone มาทับ -->
   <div class="text-center bg-white relative z-40 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] safe-b">
-    <button onclick="toggleDebug()" class="text-[11px] font-medium text-slate-500 hover:text-slate-700 transition-colors inline-flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
+    <!-- ผู้ใช้ทั่วไปไม่ต้องเห็น — เปิดด้วย ?debug=1 (จำไว้ในเครื่องจนกว่าจะเปิด ?debug=0) -->
+    <button id="debugToggle" onclick="toggleDebug()" class="hidden text-[11px] font-medium text-slate-500 hover:text-slate-700 transition-colors inline-flex items-center gap-1.5 bg-slate-100 px-3 py-1.5 rounded-full border border-slate-200">
       <span id="debugText">เปิด Debug Mode</span>
-      <span id="debugArrow" class="transition-transform duration-300">🔼</span>
+      <span id="debugArrow" class="transition-transform duration-300" data-icon="chevron-up" data-icon-class="w-3.5 h-3.5"></span>
     </button>
   </div>
 
@@ -203,7 +213,7 @@
       <span class="text-green-500 font-mono text-xs font-bold flex items-center gap-2">
         <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> Terminal Logs
       </span>
-      <button onclick="toggleDebug()" class="text-slate-400 hover:text-white text-xl leading-none px-2">&times;</button>
+      <button onclick="toggleDebug()" class="text-slate-400 hover:text-white leading-none px-2" aria-label="ปิด"><span data-icon="x" data-icon-class="w-5 h-5"></span></button>
     </div>
     <div id="debugConsole" class="text-green-400 font-mono text-[10px] p-4 h-48 overflow-y-auto w-full"></div>
   </div>
@@ -211,9 +221,9 @@
   <div id="previewScreen" class="hidden fixed inset-0 z-[100] bg-slate-100 flex flex-col h-[100dvh]">
     <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-2 shadow-sm shrink-0">
       <div class="font-bold text-base sm:text-lg text-slate-800 flex items-center gap-2 min-w-0">
-        <span class="truncate">📄 ตรวจสอบเอกสารก่อนส่ง</span>
+        <span data-icon="file-text" data-icon-class="w-5 h-5 text-slate-500"></span><span class="truncate">ตรวจสอบเอกสารก่อนส่ง</span>
       </div>
-      <button id="closePreviewBtn" aria-label="ปิด" class="text-slate-400 hover:text-slate-600 text-2xl font-bold leading-none w-10 h-10 flex items-center justify-center shrink-0">&times;</button>
+      <button id="closePreviewBtn" aria-label="ปิด" class="text-slate-400 hover:text-slate-600 leading-none w-10 h-10 flex items-center justify-center shrink-0"><span data-icon="x" data-icon-class="w-6 h-6"></span></button>
     </div>
     
     <div class="flex-1 p-0 md:p-2 overflow-hidden relative bg-slate-200">
@@ -226,17 +236,38 @@
 
     <div class="bg-white border-t border-slate-200 px-4 pt-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] safe-b">
       <div class="app-w flex flex-col gap-3">
-        <button id="downloadPdfBtn" class="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold text-base py-3 rounded-xl transition-all flex items-center justify-center gap-2 shadow-md shadow-blue-500/30">
-          ⬇️ ดาวน์โหลด PDF เก็บไว้
+        <button id="downloadPdfBtn" class="w-full bg-white hover:bg-slate-50 text-brand-700 border border-brand-200 font-bold text-base py-3 rounded-xl transition-all flex items-center justify-center gap-2">
+          <span data-icon="download" data-icon-class="w-5 h-5"></span> ดาวน์โหลด PDF เก็บไว้
         </button>
         <div class="flex gap-3">
-          <button id="backToEditBtn" class="w-1/2 bg-slate-100 text-slate-600 border border-slate-300 font-bold text-sm sm:text-base py-3.5 rounded-xl transition-all">
-            ✏️ กลับไปแก้ไข
+          <button id="backToEditBtn" class="w-1/2 bg-slate-100 text-slate-600 border border-slate-300 font-bold text-sm sm:text-base py-3.5 rounded-xl transition-all flex items-center justify-center gap-1.5">
+            <span data-icon="pencil" data-icon-class="w-4 h-4"></span> กลับไปแก้ไข
           </button>
-          <button id="confirmFromPreviewBtn" class="w-1/2 bg-[#00B900] hover:bg-[#009900] text-white font-bold text-sm sm:text-base py-3.5 rounded-xl transition-all shadow-lg shadow-green-500/30">
-            ✅ ยืนยันแจ้งซ่อม
+          <button id="confirmFromPreviewBtn" class="w-1/2 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-sm sm:text-base py-3.5 rounded-xl transition-all shadow-lg shadow-brand-500/30 flex items-center justify-center gap-1.5">
+            <span data-icon="circle-check" data-icon-class="w-5 h-5"></span> ยืนยันแจ้งซ่อม
           </button>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- หน้าจอแจ้งซ่อมสำเร็จ — แทน alert() เพื่อให้เห็นเลขตั๋วชัดๆ และไปดูสถานะต่อได้ -->
+  <div id="successScreen" class="hidden fixed inset-0 z-[110] bg-slate-50 flex flex-col h-[100dvh]" role="dialog" aria-modal="true" aria-labelledby="successTitle">
+    <div class="flex-1 overflow-y-auto flex flex-col items-center justify-center text-center px-6 py-10">
+      <div class="w-20 h-20 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mb-5"><span data-icon="circle-check" data-icon-class="w-11 h-11"></span></div>
+      <h2 id="successTitle" class="text-xl font-bold text-slate-800">แจ้งซ่อมสำเร็จ</h2>
+      <p class="text-slate-500 text-sm mt-1">รหัสอ้างอิงของคุณ</p>
+      <div id="successCode" class="mt-2 text-3xl font-bold tracking-wide text-brand-700 bg-white border border-slate-200 rounded-xl px-6 py-3">TK-</div>
+      <p class="text-slate-500 text-sm mt-5 max-w-xs">รายการนี้เข้าคิวงานของเจ้าหน้าที่ IT แล้ว ติดตามสถานะได้ที่หน้าประวัติการแจ้งซ่อม</p>
+    </div>
+    <div class="bg-white border-t border-slate-200 px-4 pt-4 shrink-0 safe-b">
+      <div class="app-w flex flex-col gap-3">
+        <button id="successHistoryBtn" class="w-full bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-base py-3.5 rounded-xl flex items-center justify-center gap-2 min-h-[52px]">
+          <span data-icon="clipboard-list" data-icon-class="w-5 h-5"></span> ดูสถานะการแจ้งซ่อม
+        </button>
+        <button id="successNewBtn" class="w-full bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 font-bold text-base py-3 rounded-xl flex items-center justify-center gap-2">
+          <span data-icon="plus" data-icon-class="w-5 h-5"></span> แจ้งซ่อมเรื่องอื่น
+        </button>
       </div>
     </div>
   </div>
@@ -273,20 +304,61 @@
       if (isEditingProfile) {
         $("profileDisplayMode").classList.replace("block", "hidden");
         $("profileEditMode").classList.replace("hidden", "grid");
-        $("toggleEditBtn").innerHTML = "💾";
+        $("toggleEditBtn").innerHTML = icon("save", "w-5 h-5");
       } else {
-        const deptSelect = $("inputDept");
-        const departmentSelect = $("inputDepartment");
-        $("dispName").innerText = $("inputName").value;
-        $("dispPosition").innerText = $("inputPosition").value;
-        $("dispDept").innerText = deptSelect.options[deptSelect.selectedIndex].text;
-        $("dispDepartment").innerText = departmentSelect.options[departmentSelect.selectedIndex].text;
-        $("dispPhone").innerText = $("inputPhone").value.trim() || "-";
+        syncProfileDisplay();
+        saveReporter();
         $("profileEditMode").classList.replace("grid", "hidden");
         $("profileDisplayMode").classList.replace("hidden", "block");
-        $("toggleEditBtn").innerHTML = "✏️";
+        $("toggleEditBtn").innerHTML = icon("pencil", "w-5 h-5");
       }
     });
+
+    function syncProfileDisplay() {
+      const deptSelect = $("inputDept");
+      const departmentSelect = $("inputDepartment");
+      const name = $("inputName").value.trim();
+      if (name) $("dispName").innerText = name;
+      else $("dispName").innerHTML = '<span class="text-red-500">— กรุณากรอกชื่อจริง-นามสกุลจริง —</span>';
+      $("dispPosition").innerText = $("inputPosition").value;
+      $("dispDept").innerText = deptSelect.options[deptSelect.selectedIndex].text;
+      $("dispDepartment").innerText = departmentSelect.options[departmentSelect.selectedIndex].text;
+      $("dispPhone").innerText = $("inputPhone").value.trim() || "-";
+    }
+
+    // ---------- จำข้อมูลผู้แจ้ง (คนแจ้งประจำไม่ต้องกรอกชื่อ/สาขาใหม่ทุกครั้ง) ----------
+    // ผูกกับ LINE userId — เครื่องที่ใช้ร่วมกันจะไม่เอาชื่อคนก่อนมาเติมให้อีกคน
+    const REPORTER_KEY = 'ft_reporter';
+    function saveReporter() {
+      const owner = $("lineUserId").value;
+      if (!owner || !$("inputName").value.trim()) return;
+      try {
+        localStorage.setItem(REPORTER_KEY, JSON.stringify({
+          owner, name: $("inputName").value.trim(), position: $("inputPosition").value.trim(),
+          deptId: $("inputDept").value, departmentId: $("inputDepartment").value, phone: $("inputPhone").value.trim()
+        }));
+      } catch (e) {}
+    }
+    function restoreReporter(userId) {
+      let r = null;
+      try { r = JSON.parse(localStorage.getItem(REPORTER_KEY) || 'null'); } catch (e) {}
+      if (!r || r.owner !== userId) return false;
+      $("inputName").value = r.name || '';
+      if (r.position) $("inputPosition").value = r.position;
+      if ([...$("inputDept").options].some(o => o.value === r.deptId)) $("inputDept").value = r.deptId;
+      if ([...$("inputDepartment").options].some(o => o.value === r.departmentId)) $("inputDepartment").value = r.departmentId;
+      $("inputPhone").value = r.phone || '';
+      return !!r.name;
+    }
+
+    function setupDebug() {
+      const q = new URLSearchParams(location.search).get('debug');
+      try {
+        if (q === '1') localStorage.setItem('ft_debug', '1');
+        if (q === '0') localStorage.removeItem('ft_debug');
+        $("debugToggle").classList.toggle('hidden', localStorage.getItem('ft_debug') !== '1');
+      } catch (e) {}
+    }
 
     // ---------- Init (LIFF) ----------
     async function initApp() {
@@ -298,8 +370,14 @@
         lineDisplayName = profile.displayName;
         $("lineNameLabel").innerText = profile.displayName;
         $("lineUserId").value = profile.userId;
-        // ไม่เติมชื่อ LINE ลงช่องชื่อจริง — บังคับให้ผู้ใช้กรอกชื่อ-นามสกุลจริงเอง
-        $("dispName").innerHTML = '<span class="text-red-500">— กรุณากรอกชื่อจริง-นามสกุลจริง —</span>';
+        setupDebug();   // หลัง liff.init — LIFF เพิ่งคืน query string (?debug=1) ให้หน้าเว็บตอนนี้
+        // ไม่ await — ฟอร์มใช้ตัวเลือกเดิมใน HTML/แคชไปก่อนระหว่างรอ
+        // เรียกก่อน restoreReporter: รายการสาขาจากแคชถูกเติมทันที (sync) สาขาที่มีแค่ใน DB จึงเลือกคืนได้
+        loadMasterData();
+
+        // ไม่เติมชื่อ LINE ลงช่องชื่อจริง — ใช้ชื่อจริงที่เคยกรอกไว้ ถ้าไม่เคยก็ให้ผู้ใช้กรอกเอง
+        const known = restoreReporter(profile.userId);
+        syncProfileDisplay();
 
         if (profile.pictureUrl) {
           const img = $("profileImage");
@@ -308,19 +386,18 @@
           $("profileFallback").classList.add("hidden");
         }
 
-        loadMasterData();   // ไม่ await — ฟอร์มใช้ตัวเลือกเดิมใน HTML/แคชไปก่อนระหว่างรอ
-
         $("loading").classList.add("hidden");
         $("formContainer").classList.remove("hidden");
+        if (!known) openProfileEdit();   // ครั้งแรก: เปิดช่องกรอกให้เลย ไม่ต้องหาปุ่มดินสอ
 
         const btn = $("previewBtn");
         btn.disabled = false;
-        btn.innerText = "📄 สร้างเอกสารแจ้งซ่อม";
+        btn.innerHTML = icon("file-text", "w-5 h-5") + "สร้างเอกสารแจ้งซ่อม";
         // ต้องตรงกับ class ตั้งต้นใน HTML (w-full / text-base sm:text-lg / min-h) เพราะบรรทัดนี้ทับ className ทั้งก้อน
-        btn.className = "w-full bg-[#00B900] hover:bg-[#009900] active:bg-[#008000] text-white font-bold text-base sm:text-lg py-3.5 rounded-xl shadow-lg shadow-green-500/30 transition-all flex items-center justify-center min-h-[52px]";
+        btn.className = "w-full bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-base sm:text-lg py-3.5 rounded-xl shadow-lg shadow-brand-500/30 transition-all flex items-center justify-center gap-2 min-h-[52px]";
       } catch (error) {
         logDebug("ERROR: " + error.message);
-        alert("LIFF Error: " + error.message);
+        ftAlert(error.message, { title: 'เชื่อมต่อ LINE ไม่สำเร็จ', confirmText: 'ลองใหม่' }).then(() => location.reload());
       }
     }
 
@@ -465,17 +542,17 @@
     function validateReporterName() {
       const name = $("inputName").value.trim();
       if (!name) {
-        alert("กรุณากรอกชื่อจริง-นามสกุลจริงของผู้แจ้งซ่อม");
+        ftToast("กรุณากรอกชื่อจริง-นามสกุลจริงของผู้แจ้งซ่อม", "info");
         openProfileEdit();
         return false;
       }
       if (name.split(/\s+/).length < 2) {
-        alert("กรุณากรอกทั้งชื่อจริงและนามสกุลจริง");
+        ftToast("กรุณากรอกทั้งชื่อจริงและนามสกุลจริง", "info");
         openProfileEdit();
         return false;
       }
       if (name.toLowerCase() === lineDisplayName.trim().toLowerCase()) {
-        alert("กรุณาใช้ชื่อจริง-นามสกุลจริง (ห้ามใช้ชื่อ LINE)");
+        ftToast("กรุณาใช้ชื่อจริง-นามสกุลจริง (ห้ามใช้ชื่อ LINE)", "info");
         openProfileEdit();
         return false;
       }
@@ -493,7 +570,7 @@
 
       const btn = this;
       const originalText = btn.innerHTML;
-      btn.innerHTML = "⏳ กำลังสร้างเอกสาร...";
+      btn.innerHTML = icon("loader-circle", "w-5 h-5 animate-spin") + "กำลังสร้างเอกสาร...";
       btn.disabled = true;
 
       try {
@@ -508,10 +585,10 @@
           $('pdfIframe').src = previewUrl;
           $('previewScreen').classList.remove('hidden');
         } else {
-          alert("เกิดข้อผิดพลาดในการสร้างเอกสาร: " + response.message);
+          ftToast("สร้างเอกสารไม่สำเร็จ: " + response.message, "error");
         }
       } catch (error) {
-        if (!handleAuthExpired(error)) alert("ติดต่อเซิร์ฟเวอร์ล้มเหลว: " + error.message);
+        if (!handleAuthExpired(error)) ftToast("ติดต่อเซิร์ฟเวอร์ไม่ได้: " + error.message, "error");
       } finally {
         btn.innerHTML = originalText;
         btn.disabled = false;
@@ -544,9 +621,9 @@
     // ---------- Download PDF (เซฟลงเครื่องผู้ใช้) ----------
     $("downloadPdfBtn").addEventListener("click", function () {
       const url = currentTicketPayload && currentTicketPayload.docPdfUrl;
-      if (!url) { alert("ยังไม่มีเอกสารให้ดาวน์โหลด"); return; }
+      if (!url) { ftToast("ยังไม่มีเอกสารให้ดาวน์โหลด", "info"); return; }
       const match = url.match(/[-\w]{25,}/); // ดึง File ID จาก URL
-      if (!match) { alert("ไม่พบไฟล์เอกสาร"); return; }
+      if (!match) { ftToast("ไม่พบไฟล์เอกสาร", "error"); return; }
       const downloadUrl = "https://drive.google.com/uc?export=download&id=" + match[0];
       // ใน LINE ให้เปิดเบราว์เซอร์ภายนอกเพื่อให้ดาวน์โหลดได้ (in-app browser บล็อกการเซฟไฟล์)
       if (typeof liff !== 'undefined' && liff.isInClient()) {
@@ -559,9 +636,9 @@
     // ให้ผู้ใช้เลือกเอง เพราะ login ใหม่ = โหลดหน้าใหม่ ข้อมูลที่กรอกไว้จะหาย
     function handleAuthExpired(error) {
       if (!error || error.message !== FT_AUTH_EXPIRED_MSG) return false;
-      if (confirm("เซสชัน LINE หมดอายุ ต้องเข้าสู่ระบบใหม่ก่อนส่งข้อมูล\n\nกด OK เพื่อเข้าสู่ระบบใหม่ (ข้อมูลที่กรอกไว้จะหาย ต้องกรอกอีกครั้ง)")) {
-        ftRelogin(true);
-      }
+      ftConfirm("ต้องเข้าสู่ระบบใหม่ก่อนส่งข้อมูล รายละเอียดอาการที่พิมพ์ไว้จะหาย (ข้อมูลผู้แจ้งยังจำไว้ให้)",
+        { title: "เซสชัน LINE หมดอายุ", confirmText: "เข้าสู่ระบบใหม่", icon: "lock" })
+        .then(ok => { if (ok) { saveReporter(); ftRelogin(true); } });
       return true;
     }
 
@@ -574,28 +651,30 @@
       // กันไว้เฉยๆ — ตอนนี้ยืนยันได้จากหน้าตรวจสอบเอกสารเท่านั้น ซึ่งจะมี PDF อยู่แล้วเสมอ
       // แต่ถ้าวันหลังมีทางเรียกฟังก์ชันนี้เพิ่ม จะได้ไม่บันทึกตั๋วที่ไม่มีเอกสารแนบ
       if (!currentTicketPayload || !currentTicketPayload.docPdfUrl) {
-        alert('กรุณากดปุ่ม "📄 สร้างเอกสารแจ้งซ่อม" เพื่อตรวจสอบเอกสารก่อนยืนยัน');
+        ftToast('กรุณากดปุ่ม "สร้างเอกสารแจ้งซ่อม" เพื่อตรวจสอบเอกสารก่อนยืนยัน', 'info');
         $("previewBtn").click();
         return;
       }
 
       const originalText = btnElement.innerHTML;
       btnElement.disabled = true;
-      btnElement.innerHTML = "⏳ กำลังบันทึก...";
+      btnElement.innerHTML = icon("loader-circle", "w-5 h-5 animate-spin") + "กำลังบันทึก...";
 
       try {
         const response = await callBackend("createTicket", currentTicketPayload);
         if (response.status === 'success') {
-          alert(`✅ แจ้งซ่อมสำเร็จ!\nรหัสอ้างอิงของคุณคือ: TK-${response.ticketId}`);
+          saveReporter();
           form.reset();
           currentTicketPayload = null;
           hidePreview();
-          if (typeof liff !== 'undefined' && liff.isInClient()) { liff.closeWindow(); }
+          $("successCode").innerText = "TK-" + response.ticketId;
+          $("successScreen").classList.remove("hidden");
+          $("successHistoryBtn").focus();
         } else {
-          alert("❌ แจ้งซ่อมไม่สำเร็จ: " + response.message);
+          ftToast("แจ้งซ่อมไม่สำเร็จ: " + response.message, "error");
         }
       } catch (error) {
-        if (!handleAuthExpired(error)) alert("❌ ติดต่อเซิร์ฟเวอร์ไม่ได้: " + error.message);
+        if (!handleAuthExpired(error)) ftToast("ติดต่อเซิร์ฟเวอร์ไม่ได้: " + error.message, "error");
       } finally {
         btnElement.disabled = false;
         btnElement.innerHTML = originalText;
@@ -604,6 +683,15 @@
 
     // ยืนยันได้ที่เดียว: ในหน้าตรวจสอบเอกสาร (เอาปุ่มยืนยันบนหน้าหลักออกแล้ว)
     $("confirmFromPreviewBtn").addEventListener("click", function () { executeSubmit(this); });
+
+    // LIFF -> LIFF ต้องเปิดผ่าน liff.line.me ไม่งั้นหน้า history ได้ token ของ LIFF app ตัวนี้แทน
+    $("successHistoryBtn").addEventListener("click", () => {
+      location.href = HISTORY_LIFF_ID ? "https://liff.line.me/" + HISTORY_LIFF_ID : "history.html";
+    });
+    $("successNewBtn").addEventListener("click", () => {
+      $("successScreen").classList.add("hidden");
+      $("mainScroll").scrollTop = 0;
+    });
 
     initApp();
   </script>

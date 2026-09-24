@@ -63,13 +63,25 @@ GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/jso
 
 | หน้า | ลำดับ |
 |---|---|
-| `index.html` | `config.js` → `common.js` → `<script>` ในหน้า |
-| `admin.html` | `config.js` → `common.js` → `map-data.js` → `admin.js` |
+| `index.html` / `history.html` | Tailwind CDN → `theme.js` → `config.js` → `common.js` → `<script>` ในหน้า |
+| `admin.html` | Tailwind CDN → `theme.js` → `config.js` → `common.js` → `map-data.js` → `admin.js` |
+
+- `theme.js` — `BRAND` + `tailwind.config` (สี `brand-*`) + CSS var `--brand-*`
+  **brand = ปุ่มหลัก/เมนูที่เลือก/ลิงก์/โฟกัส เท่านั้น** สีที่มีความหมาย (สถานะตั๋ว amber/blue/emerald,
+  สีหมวดหมู่, ป้ายบทบาท) ใช้สีตรงๆ ห้ามเปลี่ยนเป็น brand · เขียว LINE `#06C755` เฉพาะปุ่ม LINE Login
+- แจ้งผล/ถามยืนยัน: `ftToast(msg, 'info'|'success'|'error')`, `await ftConfirm(msg, {title, danger})`,
+  `ftAlert` — **ห้ามใช้ `alert()`/`confirm()`** · โหลดครั้งแรกใช้ `ftSkeleton('card'|'row', n)` แทนวงกลมหมุน
+- ฟอร์มแจ้งซ่อมจำข้อมูลผู้แจ้งใน `localStorage.ft_reporter` (ผูก LINE userId) · ปุ่ม Debug ซ่อน เปิดด้วย `?debug=1`
 
 - `config.js` — `MY_LIFF_ID`, `GAS_API_URL`, `ADMIN_LIFF_ID`
   (`ADMIN_LIFF_ID = ""` fallback ไป `MY_LIFF_ID` ได้อย่างปลอดภัย)
 - `common.js` — `$`, `ftCallBackend`, `escapeHtml`, `stripEmoji`, `cleanCategory`,
-  `parseT`, `timeAgo`, `fmtDur`, `mean`
+  `parseT`, `timeAgo`, `fmtDur`, `mean`, `icon`, `ftHydrateIcons`, `FT_ICONS`
+
+**ไอคอน** = Lucide แบบ outline ฝัง SVG ใน `FT_ICONS` (ไม่ใช้ emoji / ไม่โหลด CDN)
+ใน JS ใช้ `icon('pencil', 'w-4 h-4')` · ใน HTML ใช้ `<span data-icon="pencil" data-icon-class="w-4 h-4"></span>`
+ไอคอนใหม่: คัดลอก path จาก `lucide-static@0.460.0/icons/<name>.svg` มาเพิ่มใน `FT_ICONS`
+`alert()` / `confirm()` / `<option>` แสดง SVG ไม่ได้ → ใช้ข้อความล้วน ไม่ใส่ emoji
 - `map-data.js` — `PROVINCES` (path SVG แผนที่ 7 จังหวัด)
 
 ---
@@ -211,7 +223,7 @@ SVG `preserveAspectRatio` แบบ meet จะย่อ **ทั้งภาพ
 
 | แก้ที่ | ไปที่ | วิธี |
 |---|---|---|
-| `DEMO/` | Cloudflare Worker `fast-ticket-app` | ลากทั้งโฟลเดอร์อัปบน dashboard (ต้องครบ 6 ไฟล์) |
+| `DEMO/` | Cloudflare Worker `fast-ticket-app` | ลากทั้งโฟลเดอร์อัปบน dashboard (ต้องครบ 9 ไฟล์ รวม `theme.js`) |
 | `gas/` | Google Apps Script | ก๊อปวางในตัว editor → **Deploy → New version** (กด Save เฉยๆ ไม่พอ) |
 
 - Live: <https://fast-ticket-app.darkness7256.workers.dev/>
