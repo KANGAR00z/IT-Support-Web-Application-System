@@ -307,20 +307,24 @@ function createTicket(data, auth) {
     stmtUser.setInt(4, data.deptId || 1);
     stmtUser.executeUpdate();
 
-    // Insert ใบแจ้งซ่อม
+    // Insert ใบแจ้งซ่อม — ตั๋วจำสาขาของตัวเอง (Dept_ID) เพราะ USER.Dept_ID ถูกเขียนทับทุกครั้งที่แจ้งใหม่
+    // พื้นที่ (Branch_ID) เอาจากสาขาฝั่ง server ให้ตรงกันเสมอ — ใช้ค่าจาก client เฉพาะเมื่อไม่รู้จักสาขานั้น
+    const deptId = parseInt(data.deptId, 10) || null;
     const sqlTicket = `
       INSERT INTO "TICKET"
-      ("LINE_User_ID", "Branch_ID", "Category_ID", "Issue_Detail", "Image_URL", "Doc_PDF_URL", "Status")
-      VALUES (?, ?, ?, ?, ?, ?, 1)
+      ("LINE_User_ID", "Branch_ID", "Dept_ID", "Category_ID", "Issue_Detail", "Image_URL", "Doc_PDF_URL", "Status")
+      VALUES (?, COALESCE((SELECT "Branch_ID" FROM "DEPARTMENT" WHERE "Dept_ID" = ?), ?), ?, ?, ?, ?, ?, 1)
       RETURNING "Ticket_ID"
     `;
     stmtTicket = conn.prepareStatement(sqlTicket);
     stmtTicket.setString(1, reporterId);
-    stmtTicket.setInt(2, data.branchId);
-    stmtTicket.setInt(3, data.categoryId);
-    stmtTicket.setString(4, data.issueDetail);
-    setStringOrNull(stmtTicket, 5, data.imageUrl);
-    setStringOrNull(stmtTicket, 6, data.docPdfUrl);
+    if (deptId) stmtTicket.setInt(2, deptId); else stmtTicket.setNull(2, Jdbc.Types.INTEGER);
+    stmtTicket.setInt(3, data.branchId);
+    if (deptId) stmtTicket.setInt(4, deptId); else stmtTicket.setNull(4, Jdbc.Types.INTEGER);
+    stmtTicket.setInt(5, data.categoryId);
+    stmtTicket.setString(6, data.issueDetail);
+    setStringOrNull(stmtTicket, 7, data.imageUrl);
+    setStringOrNull(stmtTicket, 8, data.docPdfUrl);
 
     rs = stmtTicket.executeQuery();
     const newTicketId = rs.next() ? rs.getInt('Ticket_ID') : null;
@@ -362,12 +366,13 @@ function getTickets(data) {
       SELECT
         t."Ticket_ID", t."Issue_Detail", t."Status", t."IT_In_Charge", t."Doc_PDF_URL",
         t."Created_Date", t."Accepted_Date", t."Closed_Date",
-        c."Category_Name", b."Branch_Name", b."Province",
+        c."Category_Name", b."Branch_Name", b."Province", d."Dept_Name",
         u."Full_Name"  AS "Reporter_Name",
         it."Full_Name" AS "Assignee_Name"
       FROM "TICKET" t
       LEFT JOIN "ISSUE_CATEGORY" c  ON c."Category_ID"   = t."Category_ID"
       LEFT JOIN "BRANCH"         b  ON b."Branch_ID"     = t."Branch_ID"
+      LEFT JOIN "DEPARTMENT"     d  ON d."Dept_ID"       = t."Dept_ID"
       LEFT JOIN "USER"           u  ON u."LINE_User_ID"  = t."LINE_User_ID"
       LEFT JOIN "USER"           it ON it."LINE_User_ID" = t."IT_In_Charge"
       ORDER BY t."Ticket_ID" DESC
@@ -382,6 +387,7 @@ function getTickets(data) {
         detail: strOrNull_(rs, 'Issue_Detail') || '(ไม่มีรายละเอียด)',
         category: strOrNull_(rs, 'Category_Name') || '',
         branch: strOrNull_(rs, 'Branch_Name') || '',
+        dept: strOrNull_(rs, 'Dept_Name') || '',   // ว่าง = ตั๋วเก่าที่ไม่รู้สาขา
         province: strOrNull_(rs, 'Province') || '',
         reporter: strOrNull_(rs, 'Reporter_Name') || '-',
         assignee: strOrNull_(rs, 'Assignee_Name') || strOrNull_(rs, 'IT_In_Charge'),
@@ -662,7 +668,7 @@ function getMyTickets(data, auth) {
       SELECT
         t."Ticket_ID", t."Issue_Detail", t."Status", t."Doc_PDF_URL",
         t."Created_Date", t."Accepted_Date", t."Closed_Date",
-        c."Category_Name", b."Branch_Name", b."Province",
+        c."Category_Name", b."Branch_Name", b."Province", d."Dept_Name",
         it."Full_Name" AS "Assignee_Name",
         -- ตั๋วที่ปิด-เปิด-ปิดซ้ำมี KB หลายแถว: เอาอันล่าสุดอันเดียว ไม่งั้นตั๋วโผล่ซ้ำ
         (SELECT kb."Resolution_Text" FROM "KNOWLEDGE_BASE" kb
@@ -671,6 +677,7 @@ function getMyTickets(data, auth) {
       FROM "TICKET" t
       LEFT JOIN "ISSUE_CATEGORY" c  ON c."Category_ID"   = t."Category_ID"
       LEFT JOIN "BRANCH"         b  ON b."Branch_ID"     = t."Branch_ID"
+      LEFT JOIN "DEPARTMENT"     d  ON d."Dept_ID"       = t."Dept_ID"
       LEFT JOIN "USER"           it ON it."LINE_User_ID" = t."IT_In_Charge"
       WHERE t."LINE_User_ID" = ?
       ORDER BY t."Ticket_ID" DESC
@@ -687,6 +694,7 @@ function getMyTickets(data, auth) {
         detail: strOrNull_(rs, 'Issue_Detail') || '(ไม่มีรายละเอียด)',
         category: strOrNull_(rs, 'Category_Name') || '',
         branch: strOrNull_(rs, 'Branch_Name') || '',
+        dept: strOrNull_(rs, 'Dept_Name') || '',
         province: strOrNull_(rs, 'Province') || '',
         assignee: strOrNull_(rs, 'Assignee_Name') || null,
         status: rs.getInt('Status'),
@@ -735,7 +743,7 @@ const MASTER_TABLES = {
   dept: {
     table: 'DEPARTMENT', id: 'Dept_ID', label: 'สาขา',
     cols: { name: 'Dept_Name', branchId: 'Branch_ID' }, ints: ['branchId'], required: ['name', 'branchId'],
-    refs: [['USER', 'Dept_ID', 'ผู้ใช้งาน']]
+    refs: [['TICKET', 'Dept_ID', 'ตั๋วแจ้งซ่อม'], ['USER', 'Dept_ID', 'ผู้ใช้งาน']]
   },
   category: {
     table: 'ISSUE_CATEGORY', id: 'Category_ID', label: 'หมวดหมู่',
@@ -841,6 +849,17 @@ function hasIdDefault_(conn, m) {
   return !!rs.getString('column_default') || rs.getString('is_identity') === 'YES';
 }
 
+// ข้อมูลตั้งต้นถูก insert แบบระบุ id เอง sequence จึงยังค้างที่ 1 -> nextval ได้ id ที่มีอยู่แล้ว
+// (duplicate key "BRANCH_pkey") เลยเลื่อน sequence ให้ต่อจาก MAX(id) ก่อนทุกครั้ง
+// pg_get_serial_sequence ใช้ได้ทั้ง serial และ identity · อาร์กิวเมนต์ที่ 2 เป็นชื่อคอลัมน์ตรงตัว (ไม่ต้อง quote)
+function syncIdSequence_(conn, m) {
+  const stmt = conn.prepareStatement(
+    'SELECT setval(pg_get_serial_sequence(?, ?), (SELECT COALESCE(MAX("' + m.id + '"), 0) + 1 FROM "' + m.table + '"), false)');
+  stmt.setString(1, '"' + m.table + '"');
+  stmt.setString(2, m.id);
+  stmt.executeQuery();
+}
+
 function addMasterItem(data, auth) {
   const m = MASTER_TABLES[data && data.type];
   if (!m) return { status: 'error', message: 'ไม่รู้จักประเภทข้อมูล' };
@@ -857,7 +876,9 @@ function addMasterItem(data, auth) {
     const colKeys = Object.keys(m.cols);
     const colList = colKeys.map(function (k) { return '"' + m.cols[k] + '"'; }).join(', ');
     const params = colKeys.map(function () { return '?'; }).join(', ');
-    const sql = hasIdDefault_(conn, m)
+    const useDefault = hasIdDefault_(conn, m);
+    if (useDefault) syncIdSequence_(conn, m);
+    const sql = useDefault
       ? 'INSERT INTO "' + m.table + '" (' + colList + ') VALUES (' + params + ') RETURNING "' + m.id + '"'
       : 'INSERT INTO "' + m.table + '" ("' + m.id + '", ' + colList + ') ' +
         'SELECT COALESCE(MAX("' + m.id + '"), 0) + 1, ' + params + ' FROM "' + m.table + '" RETURNING "' + m.id + '"';

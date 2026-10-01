@@ -1,33 +1,68 @@
-# FAST TICKET — Handoff / Resume Note
+# FAST TICKET — สถานะปัจจุบัน / งานค้าง
 
-> อัปเดตล่าสุด: 2026-07-13 · ทำต่อ: 2026-07-14 (laptop)
-> ไฟล์นี้ sync ข้ามเครื่องผ่าน git — บน laptop รัน `git pull` ก่อนเริ่มเสมอ
+> อัปเดตล่าสุด: 2026-10-01
+> ไฟล์นี้ sync ข้ามเครื่องผ่าน git — รัน `git pull` ก่อนเริ่มทุกครั้ง
 
 ## วิธีทำงานข้ามเครื่อง (PC ↔ laptop) — สำคัญ
 ทำงานใน git clone **ที่เดียว**: `IT-Support-Web-Application-System/`
-รอบทำงาน: `git pull` → แก้ไฟล์ → `git commit -am "..."` → `git push`
+รอบทำงาน: `git pull` → แก้ไฟล์ → `git commit` → `git push`
 อีกเครื่องแค่ `git pull` — **ห้ามก๊อปไฟล์ข้ามโฟลเดอร์/เครื่องเด็ดขาด** (ต้นเหตุไฟล์เพี้ยน)
 
-## สถาปัตยกรรมย่อ
-> โครงสร้างโฟลเดอร์เต็ม + ขั้นตอน deploy ละเอียด ดู [README.md](README.md)
-> ข้อห้ามในการแก้โค้ด ดู [CLAUDE.md](CLAUDE.md)
+> โครงสร้างโฟลเดอร์ + ขั้นตอน deploy ดู [README.md](README.md) · ข้อห้ามในการแก้โค้ด ดู [CLAUDE.md](CLAUDE.md)
 
-- **`DEMO/`** → Cloudflare Worker: `index.html` (LIFF แจ้งซ่อม) + `admin.html` (Kanban) + `config.js`
-- **`gas/`** → Google Apps Script: `AdminApi.gs` (ลอจิก) + `Template.html` (แม่แบบ PDF)
-  + `Code.gs` (มี DB creds — **ห้าม commit**, gitignore กันไว้แล้ว)
-- **DB**: Supabase Postgres · **PDF**: Google Drive
-- Frontend คุย backend ผ่าน `callBackend()` POST `text/plain` (จงใจหลบ CORS — อย่าเปลี่ยนเป็น application/json)
+---
 
-## Deploy — 2 ที่ แยกกันคนละรอบ
-- Live: https://fast-ticket-app.darkness7256.workers.dev/ (Cloudflare Worker `fast-ticket-app`)
-- แก้ `DEMO/` → **ลากโฟลเดอร์ `DEMO` อัปเองบน Cloudflare dashboard**
-- แก้ `gas/` → ก๊อปวางใน Apps Script editor → **Deploy → New version** (Save เฉยๆ ไม่พอ)
+## สถานะ: ใช้งานได้ครบ deploy แล้วทุกส่วน (2026-10-01)
 
-## ค้างอยู่ (TODO ทำต่อ)
-- [ ] **Deploy admin.html** — ลากโฟลเดอร์ `DEMO` อัปใหม่ (รอบล่าสุดยังไม่มี admin.html → ตอนนี้ `/admin.html` = 404) แล้วเช็คว่าขึ้น 200
-- [ ] **Backend handlers** — admin ต้องการ `getTickets` / `acceptTicket` / `updateTicketStatus` บน GAS; ยังไม่ deploy GAS เวอร์ชันใหม่ → admin รันได้แค่โหมด mock จนกว่าจะ deploy
-- [ ] **ความปลอดภัย** — รหัส DB Supabase ที่ฝังใน `Code.gs` ควรเปลี่ยนรหัส + ย้ายไป Script Properties
-- [ ] (optional) เพิ่ม `wrangler.toml` ใน repo เพื่อ deploy ด้วย `npx wrangler deploy` แทนการลากมือ
+**ผู้ใช้ทั่วไป (LINE)**
+- แจ้งซ่อม → สร้างบันทึกข้อความ PDF → ตรวจก่อนยืนยัน → หน้าแจ้งสำเร็จพร้อมเลขตั๋ว
+- จำข้อมูลผู้แจ้ง (ชื่อ/ตำแหน่ง/สาขา/เบอร์) ครั้งต่อไปไม่ต้องกรอกซ้ำ
+- ดูประวัติและสถานะการแจ้งซ่อมของตัวเอง
 
-## เฟสถัดไป (Admin Workspace)
-เฟส 1 Kanban (โค้ดพร้อม) → เฟส 2 Dashboard (+แผนที่ 7 จังหวัดใต้) → เฟส 3 Users → เฟส 4 Knowledge Base
+**เจ้าหน้าที่ IT / Admin**
+- แดชบอร์ด (KPI, SLA, กราฟแนวโน้ม, แผนที่ 7 จังหวัด, ตั๋วค้าง)
+- ตารางงาน Kanban: รับงาน / ปิดงานพร้อมบันทึกวิธีแก้ / เปิดใหม่ · การ์ดแสดงสาขาที่แจ้ง
+- ประวัติการแจ้งซ่อม (CRUD วิธีแก้ไขปัญหา)
+- ผู้ใช้งาน (เปลี่ยนบทบาท — Admin เท่านั้น)
+- ข้อมูลหลัก: พื้นที่ / สาขา / หมวดหมู่ (CRUD — Admin เท่านั้น · ลบได้เฉพาะที่ไม่มีใครใช้)
+
+**ระบบ**
+- Auth: LINE ID Token ตรวจฝั่ง server + ACL ทุก action · login ใหม่อัตโนมัติเมื่อ token หมดอายุ
+- DB: RLS เปิดทุกตาราง · คอลัมน์สำคัญ NOT NULL · ตั๋วจำสาขาที่แจ้ง (`TICKET.Dept_ID`)
+- UI: ธีมสีกลาง (`theme.js`) · ไอคอน outline · toast/dialog · skeleton ระหว่างโหลด
+
+---
+
+## ค้างอยู่ / ยังไม่มี
+
+### ความปลอดภัย (ควรทำก่อนเปิดใช้จริง)
+- [ ] **เปลี่ยนรหัสผ่าน DB Supabase** + ย้ายจาก `Code.gs` ไป Script Properties
+      (รหัสเดิมเคยถูกวางในแชท · ขั้นตอนอยู่ในคอมเมนต์ท้าย `Code.gs`) — เจ้าของโปรเจกต์เลือกทำเอง
+
+### ฟีเจอร์ที่ยังไม่มี
+- [ ] **แจ้งเตือนผ่าน LINE** — ผู้แจ้งไม่รู้ว่ารับงาน/ปิดงานแล้วจนกว่าจะเปิดหน้าประวัติ · IT ไม่รู้ว่ามีตั๋วใหม่
+- [ ] **Rich Menu** — `DEMO/richmenu.png` (4 ปุ่ม: แจ้งซ่อม / ประวัติ / อื่นๆ / Admin) ยังไม่ตรงกับ
+      `gas/richmenu-setup.gs` (2 เมนู · ยังไม่ใส่ ID รูป) · ปุ่ม "อื่นๆ" ยังไม่กำหนดหน้าที่
+- [ ] แนบรูปตอนแจ้งซ่อม (`TICKET.Image_URL` มีคอลัมน์แต่ไม่มีช่องอัปโหลด)
+- [ ] ส่งออกรายงาน (Excel/CSV รายเดือน)
+- [ ] ประวัติการเปลี่ยนสถานะ (ใครปิด/เปิดใหม่ เมื่อไหร่) — ตอนนี้รู้แค่ผู้รับงานล่าสุด
+- [ ] "ส่วน/แผนก" (ส่วนอำนวยการ ฯลฯ) ไม่ได้เก็บใน DB — มีแค่ใน PDF · ต้องสร้างตารางใหม่
+
+### เอกสาร (ส่งรายวิชา)
+- [ ] คู่มือผู้ใช้ (พนักงานแจ้งซ่อม / เจ้าหน้าที่ IT)
+- [ ] เอกสารผลการทดสอบ (test cases)
+
+### เลื่อนไว้ (มีแผนแล้ว)
+- [ ] **ความเร็ว** — GAS ช้าคงที่ ~1.2–2 วิ/request (เคยค้าง 121 วิ 1 ครั้ง)
+      แผน: แคชผลอ่านใน CacheService (ล้างเมื่อเขียน) · ใช้ connection เดียวต่อ request ·
+      stale-while-revalidate หน้าประวัติ · timeout 30 วิ + ปุ่มลองใหม่ · preconnect
+- [ ] (optional) `wrangler.toml` ใน repo เพื่อ deploy ด้วย `npx wrangler deploy` แทนการลากมือ
+- [ ] (optional) โดเมน `.com` แทน `.workers.dev` — ต้องซื้อโดเมน + แก้ Endpoint URL ของ LIFF ทั้ง 3 ตัว
+
+---
+
+## ข้อควรรู้ก่อน demo
+- **Supabase แพ็กเกจฟรีหยุดโปรเจกต์อัตโนมัติถ้าไม่มีใช้งาน 7 วัน** → เข้า dashboard กด Restore ก่อน demo
+  (แพ็กเกจฟรีไม่มี backup ย้อนหลัง)
+- ทดสอบบนมือถือ: เปิดฟอร์มด้วย `?debug=1` จะมีปุ่ม Debug Mode ดู log ได้
+- เพิ่มพื้นที่ใหม่แล้วไม่ขึ้นในฟอร์ม = ปกติ ต้องมีสาขาในพื้นที่นั้นอย่างน้อย 1 สาขาก่อน

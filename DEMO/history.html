@@ -179,7 +179,8 @@
         if (isExpanded) {
           detailHtml = `
             <div class="px-4 pb-3.5 space-y-2 border-t border-slate-100 pt-3">
-              ${t.branch ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">สาขา:</span><span class="text-slate-600">${escapeHtml(t.branch)}</span></div>` : ''}
+              ${t.dept ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">สาขา:</span><span class="text-slate-600">${escapeHtml(t.dept)}</span></div>` : ''}
+              ${t.branch ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">พื้นที่:</span><span class="text-slate-600">${escapeHtml(t.branch)}</span></div>` : ''}
               ${t.assignee ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">ผู้รับผิดชอบ:</span><span class="text-slate-600">${escapeHtml(t.assignee)}</span></div>` : ''}
               ${t.acceptedAt ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">รับเรื่องเมื่อ:</span><span class="text-slate-600">${timeAgo(t.acceptedAt)}</span></div>` : ''}
               ${t.closedAt ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">ปิดงานเมื่อ:</span><span class="text-slate-600">${timeAgo(t.closedAt)}</span></div>` : ''}

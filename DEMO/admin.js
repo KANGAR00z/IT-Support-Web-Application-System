@@ -6,8 +6,9 @@
    API contract (ฝั่ง GAS — ดู AdminApi.gs):
      getTickets({})
        -> { status:'success', tickets:[ { id, code, detail, category, branch,
-            province, reporter, assignee, status, createdAt, acceptedAt,
+            dept, province, reporter, assignee, status, createdAt, acceptedAt,
             closedAt, pdfUrl } ] }
+          branch = พื้นที่ (BRANCH) · dept = สาขา (DEPARTMENT, ว่างได้สำหรับตั๋วเก่า)
      acceptTicket({ ticketId, staffUserId })   // รับงาน -> IN_PROGRESS
        -> { status:'success', assignee:'<Full_Name จาก DB>' }
        ⚠️ staffUserId ต้องเป็น LINE userId เพราะ TICKET.IT_In_Charge เป็น FK
@@ -188,18 +189,18 @@ function setStale(on, savedAt) {
 const MOCK_NOW = Date.now();
 const hrsAgo = (h) => new Date(MOCK_NOW - h * 3600e3).toISOString();
 const MOCK = [
-  { id:125, code:'TK-125', detail:'ปริ้นเตอร์ที่ชั้น 3 พิมพ์ไม่ออก', category:'ฮาร์ดแวร์', branch:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'กัญญาภัทร', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(2), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:126, code:'TK-126', detail:'ต้องการตั้งค่าอีเมลในมือถือใหม่', category:'ซอฟต์แวร์', branch:'สาขาหาดใหญ่', province:'สงขลา', reporter:'นพดล', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(5), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:127, code:'TK-127', detail:'ลืมรหัสผ่านเข้าระบบ CRM', category:'ซอฟต์แวร์', branch:'สาขาเมืองตรัง', province:'ตรัง', reporter:'วิภาดา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(9), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:124, code:'TK-124', detail:'เน็ตหลุดบ่อยช่วงบ่าย', category:'เครือข่าย', branch:'สาขาเมืองนราธิวาส', province:'นราธิวาส', reporter:'ฮาซัน', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(96), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:123, code:'TK-123', detail:'จอมอนิเตอร์มีเส้นแนวตั้ง', category:'ฮาร์ดแวร์', branch:'สาขาเมืองยะลา', province:'ยะลา', reporter:'ปรีชา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(120), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:122, code:'TK-122', detail:'ขอติดตั้งโปรแกรม AutoCAD', category:'ซอฟต์แวร์', branch:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'ประสิทธิ์', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(6), acceptedAt:hrsAgo(2), closedAt:null, pdfUrl:'' },
-  { id:121, code:'TK-121', detail:'ตั้งค่าเครื่องสแกนใหม่', category:'ฮาร์ดแวร์', branch:'สาขาเมืองพัทลุง', province:'พัทลุง', reporter:'สมหญิง', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(28), acceptedAt:hrsAgo(20), closedAt:null, pdfUrl:'' },
-  { id:120, code:'TK-120', detail:'อัปเกรด RAM เครื่อง Design', category:'ฮาร์ดแวร์', branch:'สาขาหาดใหญ่', province:'สงขลา', reporter:'มานี', assignee:'วิชัย ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(10), acceptedAt:hrsAgo(4), closedAt:null, pdfUrl:'' },
-  { id:119, code:'TK-119', detail:'อีเมลส่งออกไม่ได้', category:'ซอฟต์แวร์', branch:'สาขาเมืองปัตตานี', province:'ปัตตานี', reporter:'นูรีดา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(72), acceptedAt:hrsAgo(66), closedAt:hrsAgo(50), pdfUrl:'' },
-  { id:118, code:'TK-118', detail:'เปลี่ยนสาย LAN ใหม่', category:'เครือข่าย', branch:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'สุรชัย', assignee:'สมคิด ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(30), acceptedAt:hrsAgo(28), closedAt:hrsAgo(24), pdfUrl:'' },
-  { id:117, code:'TK-117', detail:'ขอสิทธิ์เข้าระบบสารบรรณ', category:'อื่นๆ', branch:'สาขาเมืองสตูล', province:'สตูล', reporter:'ยะห์ยา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(140), acceptedAt:hrsAgo(130), closedAt:hrsAgo(120), pdfUrl:'' },
-  { id:115, code:'TK-115', detail:'ตั้งค่าแชร์ปริ้นเตอร์', category:'ฮาร์ดแวร์', branch:'สาขาเบตง', province:'ยะลา', reporter:'อารีย์', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(50), acceptedAt:hrsAgo(48), closedAt:hrsAgo(26), pdfUrl:'' },
+  { id:125, code:'TK-125', detail:'ปริ้นเตอร์ที่ชั้น 3 พิมพ์ไม่ออก', category:'ฮาร์ดแวร์', dept:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'กัญญาภัทร', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(2), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:126, code:'TK-126', detail:'ต้องการตั้งค่าอีเมลในมือถือใหม่', category:'ซอฟต์แวร์', dept:'สาขาหาดใหญ่', province:'สงขลา', reporter:'นพดล', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(5), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:127, code:'TK-127', detail:'ลืมรหัสผ่านเข้าระบบ CRM', category:'ซอฟต์แวร์', dept:'สาขาเมืองตรัง', province:'ตรัง', reporter:'วิภาดา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(9), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:124, code:'TK-124', detail:'เน็ตหลุดบ่อยช่วงบ่าย', category:'เครือข่าย', dept:'สาขาเมืองนราธิวาส', province:'นราธิวาส', reporter:'ฮาซัน', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(96), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:123, code:'TK-123', detail:'จอมอนิเตอร์มีเส้นแนวตั้ง', category:'ฮาร์ดแวร์', dept:'สาขาเมืองยะลา', province:'ยะลา', reporter:'ปรีชา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(120), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:122, code:'TK-122', detail:'ขอติดตั้งโปรแกรม AutoCAD', category:'ซอฟต์แวร์', dept:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'ประสิทธิ์', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(6), acceptedAt:hrsAgo(2), closedAt:null, pdfUrl:'' },
+  { id:121, code:'TK-121', detail:'ตั้งค่าเครื่องสแกนใหม่', category:'ฮาร์ดแวร์', dept:'สาขาเมืองพัทลุง', province:'พัทลุง', reporter:'สมหญิง', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(28), acceptedAt:hrsAgo(20), closedAt:null, pdfUrl:'' },
+  { id:120, code:'TK-120', detail:'อัปเกรด RAM เครื่อง Design', category:'ฮาร์ดแวร์', dept:'สาขาหาดใหญ่', province:'สงขลา', reporter:'มานี', assignee:'วิชัย ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(10), acceptedAt:hrsAgo(4), closedAt:null, pdfUrl:'' },
+  { id:119, code:'TK-119', detail:'อีเมลส่งออกไม่ได้', category:'ซอฟต์แวร์', dept:'สาขาเมืองปัตตานี', province:'ปัตตานี', reporter:'นูรีดา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(72), acceptedAt:hrsAgo(66), closedAt:hrsAgo(50), pdfUrl:'' },
+  { id:118, code:'TK-118', detail:'เปลี่ยนสาย LAN ใหม่', category:'เครือข่าย', dept:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'สุรชัย', assignee:'สมคิด ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(30), acceptedAt:hrsAgo(28), closedAt:hrsAgo(24), pdfUrl:'' },
+  { id:117, code:'TK-117', detail:'ขอสิทธิ์เข้าระบบสารบรรณ', category:'อื่นๆ', dept:'สาขาเมืองสตูล', province:'สตูล', reporter:'ยะห์ยา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(140), acceptedAt:hrsAgo(130), closedAt:hrsAgo(120), pdfUrl:'' },
+  { id:115, code:'TK-115', detail:'ตั้งค่าแชร์ปริ้นเตอร์', category:'ฮาร์ดแวร์', dept:'สาขาเบตง', province:'ยะลา', reporter:'อารีย์', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(50), acceptedAt:hrsAgo(48), closedAt:hrsAgo(26), pdfUrl:'' },
 ];
 
 // ---------- โหลดตั๋ว ----------
@@ -251,6 +252,7 @@ function normalize(t) {
     detail: t.detail || '(ไม่มีรายละเอียด)',
     category: cleanCategory(t.category || ''),
     branch: t.branch || '',
+    dept: t.dept || '',
     province: t.province || '',   // ใช้กับแผนที่ (ถ้าไม่มี จะ fallback เดาจากชื่อสาขาใน normProv)
     reporter: t.reporter || '-',
     assignee: t.assignee || null,
@@ -283,7 +285,7 @@ function boardItems(status) {
 
   const q = boardSearch.trim().toLowerCase();
   if (q) items = items.filter(t =>
-    [t.code, t.detail, t.reporter, t.assignee, t.branch, t.province, t.category]
+    [t.code, t.detail, t.reporter, t.assignee, t.dept, t.branch, t.province, t.category]
       .some(v => String(v || '').toLowerCase().includes(q)));
 
   // เรียงตามเวลาที่ "ตรงกับสถานะนั้น" ไม่ใช่เวลาแจ้งเสมอไป
@@ -472,7 +474,8 @@ function cardEl(t) {
       </span>
       ${t.category ? `<span class="tk-cat text-[11px] px-2 py-0.5 rounded-full shrink-0 ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}
     </div>
-    <p class="tk-detail text-sm text-slate-700 leading-snug mb-3">${escapeHtml(t.detail)}</p>
+    <p class="tk-detail text-sm text-slate-700 leading-snug mb-2">${escapeHtml(t.detail)}</p>
+    ${(t.dept || t.branch) ? `<div class="tk-place text-xs text-slate-500 mb-2.5 flex items-center gap-1 min-w-0">${icon('map-pin', 'w-3.5 h-3.5')}<span class="truncate">${escapeHtml(t.dept || t.branch)}</span></div>` : ''}
     <div class="tk-meta flex items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
       <span class="inline-flex items-center gap-1 min-w-0">
         ${icon('user', 'w-3.5 h-3.5')}<span class="truncate">${escapeHtml(t.assignee || t.reporter)}</span>
@@ -946,7 +949,7 @@ async function loadUsers() {
 
 // สิทธิ์แก้บทบาท: เฉพาะบัญชีที่ login แล้วและมี role=admin ใน DB
 // (โหมด mock เปิดให้ลองกดได้ เพราะไม่บันทึกจริงอยู่แล้ว)
-// ⚠️ นี่คือ gate ระดับ UI เท่านั้น — backend ยังไม่มี auth (finding เฟส 0 ที่ค้างอยู่)
+// แค่ซ่อน/แสดงปุ่ม — ด่านจริงคือ ACL ของ updateUserRole ฝั่ง backend (Admin เท่านั้น)
 function canEditRoles() {
   if (usingMockUsers) return true;
   const me = users.find(u => u.userId === currentStaffId);

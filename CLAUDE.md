@@ -27,9 +27,11 @@ LINE app → LIFF (DEMO/*.html บน Cloudflare Worker)
 - `DEMO/` → ลากทั้งโฟลเดอร์อัป **Cloudflare Worker**
 - `gas/` → ก๊อปวางใน **Google Apps Script editor** ทีละไฟล์
 
-**หน้าเว็บ 2 หน้า**
-- `DEMO/index.html` — ฟอร์มแจ้งซ่อมของผู้ใช้ทั่วไป (ออกแบบมาสำหรับมือถือ)
-- `DEMO/admin.html` — คอนโซลเจ้าหน้าที่ IT: Dashboard / Task Board / Knowledge Base / Users / Settings
+**หน้าเว็บ 3 หน้า (LIFF app ละตัว)**
+- `DEMO/index.html` — ฟอร์มแจ้งซ่อมของผู้ใช้ทั่วไป (ออกแบบมาสำหรับมือถือ) · `MY_LIFF_ID`
+- `DEMO/history.html` — ประวัติการแจ้งซ่อมของตัวเอง · `HISTORY_LIFF_ID`
+- `DEMO/admin.html` — คอนโซลเจ้าหน้าที่ IT: Dashboard / Task Board / ประวัติการแจ้งซ่อม / Users /
+  ข้อมูลหลัก / Settings · `ADMIN_LIFF_ID`
 
 > `gas/Template.html` **ไม่ใช่หน้าเว็บ** ถึงจะเป็น `.html` — GAS อ่านผ่าน
 > `HtmlService.createTemplateFromFile('Template')` จากโปรเจกต์ Apps Script
@@ -73,8 +75,9 @@ GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/jso
   `ftAlert` — **ห้ามใช้ `alert()`/`confirm()`** · โหลดครั้งแรกใช้ `ftSkeleton('card'|'row', n)` แทนวงกลมหมุน
 - ฟอร์มแจ้งซ่อมจำข้อมูลผู้แจ้งใน `localStorage.ft_reporter` (ผูก LINE userId) · ปุ่ม Debug ซ่อน เปิดด้วย `?debug=1`
 
-- `config.js` — `MY_LIFF_ID`, `GAS_API_URL`, `ADMIN_LIFF_ID`
-  (`ADMIN_LIFF_ID = ""` fallback ไป `MY_LIFF_ID` ได้อย่างปลอดภัย)
+- `config.js` — `MY_LIFF_ID`, `ADMIN_LIFF_ID`, `HISTORY_LIFF_ID`, `GAS_API_URL`
+  **แต่ละหน้าต้อง `liff.init` ด้วย LIFF ID ของตัวเอง** — ใช้ ID ของหน้าอื่นจะ login ได้แต่
+  `getIDToken()` คืน `null` (ทุก request โดนปฏิเสธ) · LIFF app ทุกตัวต้องอยู่ใต้ LINE Login channel เดียวกัน
 - `common.js` — `$`, `ftCallBackend`, `escapeHtml`, `stripEmoji`, `cleanCategory`,
   `parseT`, `timeAgo`, `fmtDur`, `mean`, `icon`, `ftHydrateIcons`, `FT_ICONS`
 
@@ -110,7 +113,7 @@ GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/jso
 | `Admin` | `getUsers`, `updateUserRole`, `addMasterItem`, `updateMasterItem`, `deleteMasterItem` |
 
 **ข้อมูลหลัก (Master Data)** — ชื่อตารางไม่ตรงความหมาย ห้ามเปลี่ยนชื่อ (FK ผูกทั่วระบบ):
-`BRANCH` = พื้นที่ (8) → `TICKET.Branch_ID` · `DEPARTMENT` = สาขา (16, มี `Branch_ID`) → `USER.Dept_ID` ·
+`BRANCH` = พื้นที่ (8) → `TICKET.Branch_ID` · `DEPARTMENT` = สาขา (16, มี `Branch_ID`) → `TICKET.Dept_ID`, `USER.Dept_ID` ·
 `ISSUE_CATEGORY` = หมวดหมู่ · "ส่วน" 5 ตัวเลือกไม่มีตาราง อยู่ใน `index.html` อย่างเดียว
 `*MasterItem` รับแค่ key `branch`/`dept`/`category` — ชื่อตาราง/คอลัมน์มาจาก `MASTER_TABLES` ฝั่ง server
 ลบได้เฉพาะแถวที่ไม่มีใครอ้างถึง (นับจาก `refs`)
@@ -131,6 +134,13 @@ GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/jso
 - `USER.Role` มี CHECK `USER_Role_check` รับได้แค่ `'Staff'` / `'IT'` / `'Admin'`
   — **ตรงตามตัวพิมพ์** ฝั่ง frontend ส่ง lowercase แล้ว backend map ผ่าน `ROLE_DB_VALUE`
 - `TICKET.IT_In_Charge` → FK ไป `USER.LINE_User_ID`
+- `TICKET.Dept_ID` (สาขาที่แจ้ง) → FK ไป `DEPARTMENT` ว่างได้ (ตั๋วเก่า) · **ห้ามอ่านสาขาของตั๋วจาก
+  `USER.Dept_ID`** — ค่านั้นถูกเขียนทับทุกครั้งที่คนนั้นแจ้งใหม่ · `createTicket` ตั้ง `Branch_ID`
+  จากสาขาฝั่ง server ให้ตรงกันเสมอ
+- การเปลี่ยน schema ทุกครั้งเก็บเป็นไฟล์ใน `sql/` (ชื่อขึ้นต้นด้วยวันที่) และต้องรัน SQL **ก่อน**
+  deploy GAS ที่อ้างคอลัมน์ใหม่
+- `NOT NULL` แล้ว: `TICKET.Status/Created_Date/Category_ID`, `USER.Role` · RLS เปิดทุกตาราง ไม่มี policy
+  (บล็อก REST API ของ Supabase · GAS ต่อด้วยเจ้าของตารางจึงไม่โดน)
 - `KNOWLEDGE_BASE.Created_By` → FK ไป `USER.LINE_User_ID`
   (คนที่ยังไม่มีแถวใน `USER` เขียนบทความไม่ได้)
 - `TICKET.Status`: `1` = รอรับเรื่อง (Open) · `2` = กำลังดำเนินการ · `3` = เสร็จสิ้น
