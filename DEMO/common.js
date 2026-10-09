@@ -16,6 +16,10 @@ const $ = (id) => document.getElementById(id);
 //    (JWT เซ็นลายเซ็นแล้ว ปลอมไม่ได้) จึง "ไม่ต้องส่ง userId จาก client" อีก backend
 //    รู้เองว่าใครยิงจาก token getIDToken() คืน null ถ้ายังไม่ init/login -> backend ปฏิเสธ
 const FT_AUTH_EXPIRED_MSG = 'เซสชัน LINE หมดอายุ กรุณาเข้าสู่ระบบใหม่';
+
+// ต้องตรงกับ API_VERSION ใน gas/Entities.gs — แนบไปกับคำสั่งเขียนที่ใช้ชื่อ area/branch
+// (ชื่อ branch เปลี่ยนความหมายจาก พื้นที่ -> สาขา backend จึงต้องแยกหน้าเว็บรุ่นเก่าออก)
+const FT_API_VERSION = 2;
 const FT_RELOGIN_KEY = 'ft_relogin_at';
 const FT_RELOGIN_COOLDOWN = 2 * 60e3;
 
@@ -39,6 +43,44 @@ function ftRelogin(force) {
 // แต่คำสั่งเขียน (createTicket ฯลฯ) ห้ามเด้งเอง — ฟอร์มที่กรอกไว้/การกระทำจะหายเงียบๆ ให้หน้าจอบอกผู้ใช้แทน
 const ftIsReadAction = (action) => /^get/.test(action);
 
+// GAS ปกติตอบใน 1.5-3 วิ — เกินนี้มาก = ค้าง (DB ไม่ตอบ / GAS เกินเวลา) ไม่ใช่แค่ช้า
+// ไม่มี timeout = ผู้ใช้เห็นโครงหน้าโหลดค้างไปเรื่อยๆ จนเบราว์เซอร์ตัดเองเป็น "Failed to fetch"
+const FT_TIMEOUT_READ = 25e3;
+const FT_TIMEOUT_WRITE = 60e3;   // สร้าง PDF ใช้เวลานานกว่า และห้ามตัดเร็วเกินจนผู้ใช้กดซ้ำ
+
+// ยิง 1 ครั้ง -> JSON · แปลง error ดิบของเบราว์เซอร์ ("Failed to fetch") เป็นสาเหตุที่ผู้ใช้เข้าใจ
+// GAS ที่พัง/เกินเวลาตอบเป็นหน้า HTML ไม่มี header CORS เบราว์เซอร์จึงรายงานแค่ "Failed to fetch"
+async function ftFetchJson_(body, timeoutMs) {
+  const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
+  try {
+    const res = await fetch(GAS_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body,
+      signal: ctrl ? ctrl.signal : undefined
+    });
+    if (!res.ok) throw new Error('เซิร์ฟเวอร์ตอบ HTTP ' + res.status);
+    const text = await res.text();
+    try { return JSON.parse(text); }
+    catch (e) { throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ใช่ข้อมูล (อาจเกิดข้อผิดพลาดฝั่งระบบ) — ลองใหม่อีกครั้ง'); }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      const err = new Error('ระบบตอบช้าเกิน ' + Math.round(timeoutMs / 1000) + ' วินาที — ลองใหม่อีกครั้ง');
+      err.ftTimeout = true;
+      throw err;
+    }
+    if (e instanceof TypeError) {
+      throw new Error(navigator.onLine === false
+        ? 'ไม่มีการเชื่อมต่ออินเทอร์เน็ต'
+        : 'เชื่อมต่อระบบไม่สำเร็จ (เซิร์ฟเวอร์ไม่ตอบกลับ) — ลองใหม่อีกครั้ง');
+    }
+    throw e;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 // opts.noRelogin = ห้ามเด้ง login เองแม้เป็นคำสั่งอ่าน (เช่นโหลดเบื้องหลังในหน้าที่มีฟอร์มกรอกค้างอยู่)
 // ไม่เช็ควันหมดอายุ token ฝั่งเครื่อง — นาฬิกามือถือเพี้ยนจะทำให้ token ใหม่ถูกมองว่าหมดอายุตลอด
 // ให้ server (เวลาถูกต้อง) เป็นคนตัดสินอย่างเดียว
@@ -53,13 +95,20 @@ async function ftCallBackend(action, data, log, opts) {
   //     — กรณี (2) หลอกมาก เพราะ getProfile() ยังได้ชื่อ/รูปตามปกติ (นั่นคือ scope "profile")
   //       เห็นชื่อตัวเองมุมขวาบนจึงไม่ได้แปลว่ามี ID Token
   if (!idToken) throw new Error('ไม่มี LINE ID Token — ยังไม่ได้ login หรือ LIFF app ไม่ได้เปิด scope "openid"');
-  const res = await fetch(GAS_API_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify({ action, idToken, data: data || {} })
-  });
-  if (!res.ok) throw new Error('เซิร์ฟเวอร์ตอบ HTTP ' + res.status);
-  const json = await res.json();
+  const body = JSON.stringify({ action, idToken, data: data || {} });
+  const read = ftIsReadAction(action);
+  let json;
+  // คำสั่งอ่านลองซ้ำได้ 1 ครั้งเมื่อเน็ต/เซิร์ฟเวอร์สะดุด · คำสั่งเขียนห้ามลองซ้ำเอง (แจ้งซ่อมซ้ำ 2 ใบ)
+  for (let attempt = 1; ; attempt++) {
+    try {
+      json = await ftFetchJson_(body, read ? FT_TIMEOUT_READ : FT_TIMEOUT_WRITE);
+      break;
+    } catch (e) {
+      if (log) log(action + ' attempt ' + attempt + ' failed: ' + e.message);
+      if (!read || attempt >= 2 || e.ftTimeout) throw e;
+      await new Promise(r => setTimeout(r, 800));
+    }
+  }
   // token หมดอายุ / ถูก revoke — ข้อความเป็น fallback สำหรับ backend เวอร์ชันก่อนมี code
   const authFailed = json && json.status === 'error' &&
     (json.code === 'AUTH_INVALID' || (!json.code && /ยืนยันตัวตน LINE/.test(json.message || '')));
@@ -70,6 +119,16 @@ async function ftCallBackend(action, data, log, opts) {
   try { sessionStorage.removeItem(FT_RELOGIN_KEY); } catch (e) {}
   return json;
 }
+
+// ---------- โครงสร้างหน่วยงาน (ภาค -> พื้นที่ -> สาขา) ----------
+// เรียงตามผังของหน่วยงาน: ระดับบนสุด (ภาค 9) ก่อน แล้วตามชื่อ · สาขาเรียงตามชื่อเต็ม
+// เทียบแบบรหัสตัวอักษร ไม่ใช้ localeCompare — ผังของหน่วยงานเรียงแบบนี้ "สาขาเมือง..." จึงอยู่ท้ายกลุ่ม
+// และแถวสำนักงานพื้นที่ (ชื่อ = ชื่อพื้นที่) ขึ้นก่อนสาขาของตัวเองเสมอ เพราะเป็นคำนำหน้าของชื่อสาขา
+const ftCmpName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+const ftSortOffices = (list) => [...(list || [])].sort((a, b) => (!!a.parentId - !!b.parentId) || ftCmpName(a, b));
+const ftSortBranches = (list) => [...(list || [])].sort(ftCmpName);
+// ชื่อเต็มยาวมากบนการ์ด/ตาราง — ตัดคำนำหน้าที่ซ้ำทุกแถวออก ("พื้นที่ตรัง สาขากันตัง")
+const ftShortOrg = (s) => String(s || '').replace(/^สำนักงานสรรพสามิต/, '');
 
 // ---------- ไอคอน (Lucide v0.460.0, ISC License — https://lucide.dev) ----------
 // ฝัง SVG ไว้ในไฟล์ ไม่โหลดจาก CDN: ไม่ต้องรอ request เพิ่ม และใช้ใน template ที่ render ซ้ำได้เลย

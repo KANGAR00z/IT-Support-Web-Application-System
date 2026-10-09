@@ -12,6 +12,10 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="theme.js"></script>
+  <!-- เปิดการเชื่อมต่อไป GAS ล่วงหน้าระหว่างรอ LIFF init (คำขอแรกเร็วขึ้น) · crossorigin: fetch ไม่ส่ง cookie
+       ต้องใช้ connection แบบ anonymous ไม่งั้น preconnect เปล่าประโยชน์ -->
+  <link rel="preconnect" href="https://script.google.com" crossorigin>
+  <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
   
   <script src="config.js"></script>
@@ -85,12 +89,12 @@
             <div class="col-span-2 font-medium text-slate-800" id="dispName">-</div>
             <div class="text-slate-500">ตำแหน่ง:</div>
             <div class="col-span-2 text-slate-800" id="dispPosition">เจ้าหน้าที่ทั่วไป</div>
-            <div class="text-slate-500">พื้นที่/สาขา:</div>
+            <div class="text-slate-500">สังกัด:</div>
             <div class="col-span-2 text-slate-800 flex items-center">
               <span class="w-1.5 h-1.5 rounded-full bg-brand-500 mr-2"></span>
-              <span id="dispDept">สำนักงานสรรพสามิตภาคที่ 9</span>
+              <span id="dispBranch">สำนักงานสรรพสามิตภาคที่ 9</span>
             </div>
-            <div class="text-slate-500">ส่วน/แผนก:</div>
+            <div class="text-slate-500">ส่วน:</div>
             <div class="col-span-2 text-slate-800" id="dispDepartment">ส่วนอำนวยการ</div>
             <div class="text-slate-500">เบอร์ภายใน:</div>
             <div class="col-span-2 text-slate-800" id="dispPhone">-</div>
@@ -108,42 +112,52 @@
             <input type="text" id="inputPosition" value="เจ้าหน้าที่ทั่วไป" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500">สาขา / พื้นที่ (Branch)</label>
-            <select id="inputDept" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
-              <option value="1" data-branch="1">สำนักงานสรรพสามิตภาคที่ 9</option>
-              <optgroup label="1. พื้นที่สงขลา">
-                <option value="2" data-branch="2">สาขาเมืองสงขลา</option>
-                <option value="3" data-branch="2">สาขาหาดใหญ่</option>
-                <option value="4" data-branch="2">สาขาสะเดา</option>
+            <label class="text-xs font-medium text-slate-500">สาขา / สำนักงาน (Branch)</label>
+            <select id="inputBranch" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
+              <!-- ค่าสำรองตอนโหลดจาก DB ไม่ได้ (id ตรงกับ DB) เรียงตามผังหน่วยงาน · แสดงชื่อย่อ ชื่อเต็มอยู่ที่ data-full
+                   ตัวสำนักงานพื้นที่ id = Office_ID + 1000 (ตั้งไว้ตายตัวใน sql/2026-10-10-org-hierarchy.sql) -->
+              <option value="1" data-office="1" data-full="สำนักงานสรรพสามิตภาคที่ 9">สำนักงานสรรพสามิตภาคที่ 9</option>
+              <optgroup label="สำนักงานสรรพสามิตพื้นที่ตรัง">
+                <option value="1003" data-office="3" data-full="สำนักงานสรรพสามิตพื้นที่ตรัง">สำนักงานสรรพสามิตพื้นที่ตรัง</option>
+                <option value="6" data-office="3" data-full="สำนักงานสรรพสามิตพื้นที่ตรัง สาขากันตัง">สาขากันตัง</option>
+                <option value="5" data-office="3" data-full="สำนักงานสรรพสามิตพื้นที่ตรัง สาขาเมืองตรัง">สาขาเมืองตรัง</option>
               </optgroup>
-              <optgroup label="2. พื้นที่ตรัง">
-                <option value="5" data-branch="3">สาขาเมืองตรัง</option>
-                <option value="6" data-branch="3">สาขากันตัง</option>
+              <optgroup label="สำนักงานสรรพสามิตพื้นที่นราธิวาส">
+                <option value="1004" data-office="4" data-full="สำนักงานสรรพสามิตพื้นที่นราธิวาส">สำนักงานสรรพสามิตพื้นที่นราธิวาส</option>
+                <option value="8" data-office="4" data-full="สำนักงานสรรพสามิตพื้นที่นราธิวาส สาขาระแงะ">สาขาระแงะ</option>
+                <option value="9" data-office="4" data-full="สำนักงานสรรพสามิตพื้นที่นราธิวาส สาขาสุไหงโก-ลก">สาขาสุไหงโก-ลก</option>
+                <option value="7" data-office="4" data-full="สำนักงานสรรพสามิตพื้นที่นราธิวาส สาขาเมืองนราธิวาส">สาขาเมืองนราธิวาส</option>
               </optgroup>
-              <optgroup label="3. พื้นที่นราธิวาส">
-                <option value="7" data-branch="4">สาขาเมืองนราธิวาส</option>
-                <option value="8" data-branch="4">สาขาระแงะ</option>
-                <option value="9" data-branch="4">สาขาสุไหงโก-ลก</option>
+              <optgroup label="สำนักงานสรรพสามิตพื้นที่ปัตตานี">
+                <option value="1005" data-office="5" data-full="สำนักงานสรรพสามิตพื้นที่ปัตตานี">สำนักงานสรรพสามิตพื้นที่ปัตตานี</option>
+                <option value="11" data-office="5" data-full="สำนักงานสรรพสามิตพื้นที่ปัตตานี สาขามายอ">สาขามายอ</option>
+                <option value="10" data-office="5" data-full="สำนักงานสรรพสามิตพื้นที่ปัตตานี สาขาเมืองปัตตานี">สาขาเมืองปัตตานี</option>
               </optgroup>
-              <optgroup label="4. พื้นที่ปัตตานี">
-                <option value="10" data-branch="5">สาขาเมืองปัตตานี</option>
-                <option value="11" data-branch="5">สาขามายอ</option>
+              <optgroup label="สำนักงานสรรพสามิตพื้นที่พัทลุง">
+                <option value="1007" data-office="7" data-full="สำนักงานสรรพสามิตพื้นที่พัทลุง">สำนักงานสรรพสามิตพื้นที่พัทลุง</option>
+                <option value="15" data-office="7" data-full="สำนักงานสรรพสามิตพื้นที่พัทลุง สาขาตะโหมด">สาขาตะโหมด</option>
+                <option value="14" data-office="7" data-full="สำนักงานสรรพสามิตพื้นที่พัทลุง สาขาเมืองพัทลุง">สาขาเมืองพัทลุง</option>
               </optgroup>
-              <optgroup label="5. พื้นที่ยะลา">
-                <option value="12" data-branch="6">สาขาเมืองยะลา</option>
-                <option value="13" data-branch="6">สาขาเบตง</option>
+              <optgroup label="สำนักงานสรรพสามิตพื้นที่ยะลา">
+                <option value="1006" data-office="6" data-full="สำนักงานสรรพสามิตพื้นที่ยะลา">สำนักงานสรรพสามิตพื้นที่ยะลา</option>
+                <option value="13" data-office="6" data-full="สำนักงานสรรพสามิตพื้นที่ยะลา สาขาเบตง">สาขาเบตง</option>
+                <option value="12" data-office="6" data-full="สำนักงานสรรพสามิตพื้นที่ยะลา สาขาเมืองยะลา">สาขาเมืองยะลา</option>
               </optgroup>
-              <optgroup label="6. พื้นที่พัทลุง">
-                <option value="14" data-branch="7">สาขาเมืองพัทลุง</option>
-                <option value="15" data-branch="7">สาขาตะโหมด</option>
+              <optgroup label="สำนักงานสรรพสามิตพื้นที่สงขลา">
+                <option value="1002" data-office="2" data-full="สำนักงานสรรพสามิตพื้นที่สงขลา">สำนักงานสรรพสามิตพื้นที่สงขลา</option>
+                <option value="4" data-office="2" data-full="สำนักงานสรรพสามิตพื้นที่สงขลา สาขาสะเดา">สาขาสะเดา</option>
+                <option value="3" data-office="2" data-full="สำนักงานสรรพสามิตพื้นที่สงขลา สาขาหาดใหญ่">สาขาหาดใหญ่</option>
+                <option value="2" data-office="2" data-full="สำนักงานสรรพสามิตพื้นที่สงขลา สาขาเมืองสงขลา">สาขาเมืองสงขลา</option>
               </optgroup>
-              <optgroup label="7. พื้นที่สตูล">
-                <option value="16" data-branch="8">สาขาเมืองสตูล</option>
+              <optgroup label="สำนักงานสรรพสามิตพื้นที่สตูล">
+                <option value="1008" data-office="8" data-full="สำนักงานสรรพสามิตพื้นที่สตูล">สำนักงานสรรพสามิตพื้นที่สตูล</option>
+                <option value="16" data-office="8" data-full="สำนักงานสรรพสามิตพื้นที่สตูล สาขาเมืองสตูล">สาขาเมืองสตูล</option>
               </optgroup>
             </select>
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500">ส่วน / แผนก (Department)</label>
+            <label class="text-xs font-medium text-slate-500">ส่วน (Department)</label>
+            <!-- ค่าสำรองตอนโหลดจาก DB ไม่สำเร็จ — value = DEPARTMENT.Dept_ID -->
             <select id="inputDepartment" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
               <option value="1">ส่วนอำนวยการ</option>
               <option value="2">ส่วนบริหารจัดเก็บภาษี</option>
@@ -315,14 +329,14 @@
     });
 
     function syncProfileDisplay() {
-      const deptSelect = $("inputDept");
-      const departmentSelect = $("inputDepartment");
+      const branchSelect = $("inputBranch");
+      const deptSelect = $("inputDepartment");
       const name = $("inputName").value.trim();
       if (name) $("dispName").innerText = name;
       else $("dispName").innerHTML = '<span class="text-red-500">— กรุณากรอกชื่อจริง-นามสกุลจริง —</span>';
       $("dispPosition").innerText = $("inputPosition").value;
-      $("dispDept").innerText = deptSelect.options[deptSelect.selectedIndex].text;
-      $("dispDepartment").innerText = departmentSelect.options[departmentSelect.selectedIndex].text;
+      $("dispBranch").innerText = fullBranchName(branchSelect.options[branchSelect.selectedIndex]);
+      $("dispDepartment").innerText = deptSelect.options[deptSelect.selectedIndex].text;
       $("dispPhone").innerText = $("inputPhone").value.trim() || "-";
     }
 
@@ -335,7 +349,7 @@
       try {
         localStorage.setItem(REPORTER_KEY, JSON.stringify({
           owner, name: $("inputName").value.trim(), position: $("inputPosition").value.trim(),
-          deptId: $("inputDept").value, departmentId: $("inputDepartment").value, phone: $("inputPhone").value.trim()
+          branchId: $("inputBranch").value, departmentId: $("inputDepartment").value, phone: $("inputPhone").value.trim()
         }));
       } catch (e) {}
     }
@@ -345,7 +359,9 @@
       if (!r || r.owner !== userId) return false;
       $("inputName").value = r.name || '';
       if (r.position) $("inputPosition").value = r.position;
-      if ([...$("inputDept").options].some(o => o.value === r.deptId)) $("inputDept").value = r.deptId;
+      // ชื่อ field เดิมที่เครื่องผู้ใช้อาจจำไว้: deptId (= สาขา, id ชุดเดียวกับ branchId)
+      const br = r.branchId || r.deptId;
+      if ([...$("inputBranch").options].some(o => o.value === br)) $("inputBranch").value = br;
       if ([...$("inputDepartment").options].some(o => o.value === r.departmentId)) $("inputDepartment").value = r.departmentId;
       $("inputPhone").value = r.phone || '';
       return !!r.name;
@@ -408,41 +424,42 @@
     // ---------- Form data collectors ----------
     // stripEmoji / cleanCategory (เอกสารราชการห้ามมี emoji) อยู่ใน common.js
 
-    // ---------- ข้อมูลหลัก (พื้นที่/สาขา/หมวดหมู่) จาก DB ----------
+    // ---------- ข้อมูลหลัก (พื้นที่/สาขา/ส่วน/หมวดหมู่) จาก DB ----------
     // ตัวเลือกที่เขียนไว้ใน HTML = ค่าสำรองตอนโหลดไม่สำเร็จ (ID ตรงกับ DB ณ วันที่ย้าย)
-    // BRANCH = พื้นที่ · DEPARTMENT = สาขา (มี branchId) · value ของ option = Dept_ID เหมือนเดิม
-    const MASTER_CACHE_KEY = 'ft_master_cache';
+    // EXCISE_OFFICE = พื้นที่ (มี parentId: ภาค 9 = ระดับบนสุด) · BRANCH = สาขา (มี officeId, ชื่อเต็ม)
+    // DEPARTMENT = ส่วน · value ของ option = id ใน DB
+    // key มี _v3: แคชรุ่นก่อนหน้าเก็บชื่อสาขาแบบสั้น ("สาขากันตัง") — PDF จะขาดชื่อพื้นที่
+    const MASTER_CACHE_KEY = 'ft_master_v3';
+    try { localStorage.removeItem('ft_master_cache'); localStorage.removeItem('ft_master_v2'); } catch (e) {}
 
+    // dropdown ตามผังหน่วยงาน: ระดับบนสุด (ภาค 9) เป็นตัวเลือกเดี่ยว ที่เหลือจัดกลุ่มตามพื้นที่
+    // แต่ละกลุ่ม: ตัวสำนักงานพื้นที่ (ชื่อ = ชื่อพื้นที่) ก่อน แล้วสาขาเรียงตามชื่อ (ftSortBranches)
     function applyMasterData(md) {
-      if (!md || !(md.branches || []).length || !(md.depts || []).length || !(md.categories || []).length) return false;
-      const deptSel = $("inputDept"), catSel = $("category");
-      const prevDept = deptSel.value, prevCat = catSel.value;
+      if (!md || !(md.offices || []).length || !(md.branches || []).length || !(md.categories || []).length) return false;
+      const branchSel = $("inputBranch"), catSel = $("category");
+      const prevBranch = branchSel.value, prevCat = catSel.value;
 
-      deptSel.innerHTML = '';
-      let groupNo = 0;
-      md.branches.forEach(b => {
-        const ds = md.depts.filter(d => d.branchId === b.id);
-        if (!ds.length) return;
-        let grp = null;
-        ds.forEach(d => {
+      branchSel.innerHTML = '';
+      ftSortOffices(md.offices).forEach(o => {
+        const bs = ftSortBranches(md.branches.filter(b => b.officeId === o.id));
+        if (!bs.length) return;
+        let parent = branchSel;
+        if (o.parentId) {
+          parent = document.createElement('optgroup');
+          parent.label = o.name;
+          branchSel.appendChild(parent);
+        }
+        bs.forEach(b => {
           const opt = document.createElement('option');
-          opt.value = d.id;
-          opt.textContent = d.name;
-          opt.dataset.branch = b.id;
-          // สำนักงานใหญ่ (ชื่อสาขาขึ้นต้นด้วยชื่อพื้นที่) ไม่ต้องจัดกลุ่ม และ PDF ใช้แค่ชื่อพื้นที่
-          // เช่น "สำนักงานสรรพสามิตภาคที่ 9" · ที่เหลือ = ชื่อพื้นที่ + ชื่อสาขา
-          if (d.name.startsWith(b.name)) {
-            opt.dataset.full = b.name;
-            deptSel.appendChild(opt);
-          } else {
-            if (!grp) {
-              grp = document.createElement('optgroup');
-              grp.label = (++groupNo) + '. ' + b.name.replace(/^สำนักงานสรรพสามิต/, '');
-              deptSel.appendChild(grp);
-            }
-            opt.dataset.full = b.name + ' ' + d.name;
-            grp.appendChild(opt);
-          }
+          opt.value = b.id;
+          opt.dataset.office = o.id;
+          // DB เก็บชื่อเต็ม "สำนักงานสรรพสามิตพื้นที่ตรัง สาขากันตัง" -> ในกลุ่มของพื้นที่แสดงแค่ "สาขากันตัง"
+          // ตัวสำนักงานพื้นที่ (ชื่อ = ชื่อพื้นที่) แสดงชื่อเต็ม · data-full = ชื่อเต็มสำหรับบันทึกข้อความ/โปรไฟล์
+          // DB ที่ยังไม่รัน 2026-10-10 (ชื่อสั้น) -> ประกอบชื่อเต็มเองแบบเดิม
+          const isFull = b.name === o.name || b.name.indexOf(o.name + ' ') === 0;
+          opt.dataset.full = isFull ? b.name : o.name + ' ' + b.name;
+          opt.textContent = b.name.indexOf(o.name + ' ') === 0 ? b.name.slice(o.name.length + 1) : b.name;
+          parent.appendChild(opt);
         });
       });
 
@@ -454,10 +471,24 @@
         catSel.appendChild(opt);
       });
 
+      // ส่วน: ไม่บังคับ — แคชในเครื่องก่อนมีตาราง DEPARTMENT ไม่มี departments ก็ยังใช้ข้อมูลอื่นได้
+      if ((md.departments || []).length) {
+        const secSel = $("inputDepartment"), prevSec = secSel.value;
+        secSel.innerHTML = '';
+        md.departments.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = s.name;
+          secSel.appendChild(opt);
+        });
+        if ([...secSel.options].some(o => o.value === prevSec)) secSel.value = prevSec;
+        $("dispDepartment").innerText = secSel.options[secSel.selectedIndex].text;
+      }
+
       // คงค่าที่ผู้ใช้เลือกไว้แล้ว ถ้ายังมีอยู่ในรายการใหม่
-      if ([...deptSel.options].some(o => o.value === prevDept)) deptSel.value = prevDept;
+      if ([...branchSel.options].some(o => o.value === prevBranch)) branchSel.value = prevBranch;
       catSel.value = [...catSel.options].some(o => o.value === prevCat && prevCat) ? prevCat : '';
-      $("dispDept").innerText = deptSel.options[deptSel.selectedIndex].text;
+      $("dispBranch").innerText = fullBranchName(branchSel.options[branchSel.selectedIndex]);
       return true;
     }
 
@@ -468,8 +499,9 @@
         const res = await ftCallBackend('getMasterData', {}, logDebug, { noRelogin: true });
         if (res && res.status === 'success' && applyMasterData(res)) {
           const slim = {
-            branches: res.branches.map(b => ({ id: b.id, name: b.name })),
-            depts: res.depts.map(d => ({ id: d.id, name: d.name, branchId: d.branchId })),
+            offices: res.offices.map(a => ({ id: a.id, name: a.name, parentId: a.parentId || 0 })),
+            branches: res.branches.map(b => ({ id: b.id, name: b.name, officeId: b.officeId })),
+            departments: (res.departments || []).map(s => ({ id: s.id, name: s.name })),
             categories: res.categories.map(c => ({ id: c.id, name: c.name }))
           };
           try { localStorage.setItem(MASTER_CACHE_KEY, JSON.stringify(slim)); } catch (e) {}
@@ -482,30 +514,23 @@
       }
     }
 
-    // ชื่อเต็มทางการของสาขา — ถ้ามาจาก DB ใช้ data-full ที่ประกอบไว้แล้ว
-    // ไม่งั้น (ตัวเลือกสำรองใน HTML) ประกอบจาก optgroup (พื้นที่) + ข้อความ option
-    // เช่น optgroup "5. พื้นที่ยะลา" + "สาขาเบตง" -> "สำนักงานสรรพสามิตพื้นที่ยะลา สาขาเบตง"
+    // ชื่อเต็มทางการของสาขา (เช่น "สำนักงานสรรพสามิตพื้นที่ยะลา สาขาเบตง") — ตัวเลือกแสดงชื่อย่อ ชื่อเต็มอยู่ที่ data-full
     function fullBranchName(optionEl) {
-      if (optionEl.dataset.full) return optionEl.dataset.full;
-      const grp = optionEl.parentElement;
-      if (grp && grp.tagName === 'OPTGROUP') {
-        const area = grp.label.replace(/^\s*\d+\.\s*พื้นที่\s*/, '').trim();
-        return 'สำนักงานสรรพสามิตพื้นที่' + area + ' ' + optionEl.text;
-      }
-      return optionEl.text; // สำนักงานสรรพสามิตภาคที่ 9 (เป็นชื่อเต็มอยู่แล้ว)
+      return (optionEl && (optionEl.dataset.full || optionEl.text)) || '';
     }
 
     function collectDocumentData() {
-      const deptSelect = $("inputDept");
-      const departmentSelect = $("inputDepartment");
+      const branchSelect = $("inputBranch");
+      const deptSelect = $("inputDepartment");
       const categorySelect = $("category");
-      const branchFull = fullBranchName(deptSelect.options[deptSelect.selectedIndex]);      // ชื่อเต็มสาขา (BRANCH)
-      const departmentText = departmentSelect.options[departmentSelect.selectedIndex].text; // ส่วน (DEPARTMENT)
+      const branchFull = fullBranchName(branchSelect.options[branchSelect.selectedIndex]);  // ชื่อเต็ม พื้นที่ + สาขา
+      const deptText = deptSelect.options[deptSelect.selectedIndex].text;      // ส่วน (DEPARTMENT)
       return {
         name: $("inputName").value,
         position: $("inputPosition").value,
-        // ส่วนราชการ ในบันทึกข้อความ = ชื่อเต็มสาขา + ส่วน
-        department: branchFull + ' ' + departmentText,
+        // ส่วนราชการ ในบันทึกข้อความ = ชื่อเต็มสาขา + ส่วน · ส่ง department แยกด้วยให้ template ตัดบรรทัดได้แม่น
+        department: branchFull + ' ' + deptText,
+        section: deptText,
         phone: $("inputPhone").value.trim() || '-', // เบอร์โทรศัพท์ภายใน (แทนที่ - หลังโทร.)
         asset_id: $("assetId").value.trim(),
         problem_type: cleanCategory(categorySelect.options[categorySelect.selectedIndex].text), // ตัด emoji + (English)
@@ -514,18 +539,19 @@
     }
 
     // payload แบบ id สำหรับบันทึกลงฐานข้อมูล (createTicket)
+    // ไม่ส่ง userId — backend ใช้ตัวตนจาก LINE ID Token เท่านั้น
     function buildTicketPayload() {
-      const deptSelect = $("inputDept");
-      const deptOption = deptSelect.options[deptSelect.selectedIndex];
+      const branchSelect = $("inputBranch");
+      const branchOption = branchSelect.options[branchSelect.selectedIndex];
       const assetId = $("assetId").value.trim();
       const desc = $("description").value.trim();
       return {
-        lineUserId: $("lineUserId").value,
+        apiVersion: FT_API_VERSION,
         displayName: $("inputName").value,
         position: $("inputPosition").value,
-        deptId: parseInt(deptSelect.value),
-        branchId: parseInt(deptOption.getAttribute("data-branch")),
-        departmentId: parseInt($("inputDepartment").value), // ส่วน 1-5 (backend เพิ่มคอลัมน์รองรับภายหลัง)
+        branchId: parseInt(branchSelect.value),                         // BRANCH.Branch_ID (สาขา)
+        officeId: parseInt(branchOption.getAttribute("data-office")),       // สำรอง — server หาจากสาขาเอง
+        departmentId: parseInt($("inputDepartment").value),                   // DEPARTMENT.Dept_ID
         categoryId: parseInt($("category").value),
         issueDetail: assetId ? `[${assetId}] ${desc}` : desc,
         imageUrl: null,

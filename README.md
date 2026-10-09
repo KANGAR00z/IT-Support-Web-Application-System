@@ -46,7 +46,11 @@ IT-Support-Web-Application-System/
 │   └── richmenu.png      รูป Rich Menu (2500x1686)
 │
 ├── gas/             → Google Apps Script (ก๊อปวางในตัว editor ทีละไฟล์)
-│   ├── AdminApi.gs       doPost + auth + ทุก handler  ← ลอจิกหลักทั้งหมด
+│   ├── ApiRouter.gs      doPost + ตรวจ LINE ID Token + ACL → ส่งต่อ use case
+│   ├── UseCases.gs       ลอจิกของแต่ละ action (ตรวจ input / transaction / คำตอบ)
+│   ├── Repositories.gs   SQL ทั้งหมด (PreparedStatement)
+│   ├── Infrastructure.gs connection / transaction / Drive-PDF
+│   ├── Entities.gs       ค่าคงที่ (สถานะ, บทบาท, API_VERSION) + กฎตรวจค่า
 │   ├── Template.html     แม่แบบบันทึกข้อความ (GAS render เป็น PDF)
 │   ├── richmenu-setup.gs สคริปต์ตั้ง rich menu (รันมือครั้งเดียว)
 │   └── Code.gs           🔒 รหัสผ่าน DB — gitignore ไว้ ไม่มีในรีโป
@@ -54,7 +58,12 @@ IT-Support-Web-Application-System/
 ├── sql/             → รันมือใน Supabase SQL Editor (ชื่อไฟล์ขึ้นต้นด้วยวันที่ = ลำดับที่รัน)
 │   ├── set-admin.sql                 ตั้ง Role ให้บัญชีแรกเป็น Admin
 │   ├── 2026-10-01-hotfix.sql         sequence ของ id · ชื่อสาขา · NOT NULL · index
-│   └── 2026-10-01-ticket-dept.sql    เพิ่ม TICKET.Dept_ID (ตั๋วจำสาขาที่แจ้ง)
+│   ├── 2026-10-01-ticket-dept.sql    เพิ่ม TICKET.Dept_ID (ตั๋วจำสาขาที่แจ้ง)
+│   ├── 2026-10-06-section.sql        ตาราง SECTION (ส่วน) + TICKET/USER.Section_ID
+│   └── 2026-10-09-rename-org-tables.sql  BRANCH→EXCISE_OFFICE, DEPARTMENT→BRANCH,
+│                                     SECTION→DEPARTMENT + ยกเลิกงาน (Deleted_At)
+│   └── 2026-10-10-org-hierarchy.sql  ภาค 9 เป็นแม่ของพื้นที่ · ชื่อสาขาเต็ม · ตัวเลือกสำนักงานพื้นที่
+│                                     (ไฟล์ก่อนหน้านี้ใช้ชื่อตารางเดิม — รันไปแล้ว ห้ามรันซ้ำ)
 │
 ├── CLAUDE.md         สถาปัตยกรรม + ข้อห้าม (อ่านก่อนแก้โค้ด)
 ├── RESUME.md         สถานะปัจจุบัน + งานค้าง + วิธีทำงานข้ามเครื่อง
@@ -81,6 +90,9 @@ IT-Support-Web-Application-System/
 
 แก้อะไรใน `gas/` → เปิดโปรเจกต์ Apps Script → ก๊อปเนื้อไฟล์ไปวางทับ →
 **Deploy → Manage deployments → เปลี่ยน version เป็น New version**
+
+ไฟล์ในโปรเจกต์ GAS ต้องมี: `ApiRouter` `UseCases` `Repositories` `Infrastructure` `Entities`
+`Template` (html) `Code` (มีอยู่แล้ว ไม่ต้องแตะ) · **ห้ามมี `AdminApi.gs` ค้างอยู่** (ฟังก์ชันซ้ำกัน ตัวเก่าทับตัวใหม่)
 
 การกด Save เฉยๆ ไม่พอ ต้อง deploy version ใหม่ URL เดิมถึงจะได้โค้ดใหม่
 

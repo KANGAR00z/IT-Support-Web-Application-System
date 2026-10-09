@@ -77,8 +77,13 @@
     var now = new Date();
     var thDate = toThai(now.getDate()) + ' ' + thMonths[now.getMonth()] + ' ' + toThai(now.getFullYear() + 543);
     // แยกชื่อสาขา (branch) กับ ส่วน ให้อยู่คนละบรรทัด -> แต่ละบรรทัดเป็นเส้นเดียวเต็มความกว้าง
+    // ฟอร์มส่งชื่อส่วนมาแยก (section) -> ตัดตรงนั้น ชื่อส่วนที่ไม่ขึ้นต้นด้วย "ส่วน" ก็ยังแยกบรรทัดถูก
+    // ไม่มี section (ฟอร์มเวอร์ชันเก่า) -> เดาจากคำว่า " ส่วน" ตัวสุดท้ายแบบเดิม
     var deptStr = toThai(department);
-    var sIdx = deptStr.lastIndexOf(' ส่วน');
+    var secStr = (typeof section !== 'undefined' && section) ? toThai(section) : '';
+    var sIdx = (secStr && deptStr.slice(-(secStr.length + 1)) === ' ' + secStr)
+      ? deptStr.length - secStr.length - 1
+      : deptStr.lastIndexOf(' ส่วน');
     var branchPart = sIdx > 0 ? deptStr.substring(0, sIdx) : deptStr;
     var sectionPart = sIdx > 0 ? deptStr.substring(sIdx + 1) : '';
     // เบอร์โทรภายใน — typeof guard กัน ReferenceError ถ้า Code.gs ยังไม่ได้ส่ง phone มา

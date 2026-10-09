@@ -3,12 +3,14 @@
    -----------------------------------------------------------------------------
    ต้องโหลดหลัง: config.js, common.js, map-data.js
 
-   API contract (ฝั่ง GAS — ดู AdminApi.gs):
+   API contract (ฝั่ง GAS — ดู gas/UseCases.gs):
      getTickets({})
-       -> { status:'success', tickets:[ { id, code, detail, category, branch,
-            dept, province, reporter, assignee, status, createdAt, acceptedAt,
-            closedAt, pdfUrl } ] }
-          branch = พื้นที่ (BRANCH) · dept = สาขา (DEPARTMENT, ว่างได้สำหรับตั๋วเก่า)
+       -> { status:'success', tickets:[ { id, code, detail, category, office,
+            branch, department, province, reporter, assignee, status, createdAt, acceptedAt,
+            closedAt, pdfUrl } ] }   (ไม่รวมงานที่ถูกยกเลิก)
+          office = พื้นที่ (EXCISE_OFFICE) · branch = สาขา (BRANCH) · department = ส่วน (DEPARTMENT)
+          branch/department ว่างได้สำหรับตั๋วเก่า
+     deleteTicket({ ticketId })                 // Admin เท่านั้น — ยกเลิกงาน (soft delete)
      acceptTicket({ ticketId, staffUserId })   // รับงาน -> IN_PROGRESS
        -> { status:'success', assignee:'<Full_Name จาก DB>' }
        ⚠️ staffUserId ต้องเป็น LINE userId เพราะ TICKET.IT_In_Charge เป็น FK
@@ -39,7 +41,7 @@ const VIEWS = {
                              : 'จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ' },
   kb:        { title:'ประวัติการแจ้งซ่อม', sub:'รวมประวัติและวิธีแก้ไขปัญหาจากตั๋วที่ปิดงานแล้ว' },
   users:     { title:'ผู้ใช้งาน (Users)', sub:'จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด' },
-  master:    { title:'ข้อมูลหลัก (Master Data)', sub:'พื้นที่ · สาขา · หมวดหมู่ปัญหา ที่ใช้ในฟอร์มแจ้งซ่อม' },
+  master:    { title:'ข้อมูลหลัก (Master Data)', sub:'พื้นที่ · สาขา · ส่วน · หมวดหมู่ปัญหา ที่ใช้ในฟอร์มแจ้งซ่อม' },
   settings:  { title:'ตั้งค่า (Settings)', sub:'บัญชีของฉันและค่าตั้งต้นของแดชบอร์ด' },
 };
 
@@ -112,7 +114,16 @@ let currentStaff   = localStorage.getItem('ft_staff') || '';      // ชื่�
 let currentStaffId = localStorage.getItem('ft_staff_id') || '';   // LINE userId ที่ส่งให้ backend
 let staffPicUrl    = localStorage.getItem('ft_staff_pic') || '';   // URL รูปโปรไฟล์จาก LINE
 // ข้อมูลจาก DB (getMyProfile) — โหลดหลัง login สำเร็จ
-let staffProfile   = JSON.parse(localStorage.getItem('ft_staff_profile') || 'null');  // { name, position, role, dept, branch, province }
+// key มี _v2: โปรไฟล์/แคชตั๋วรุ่นก่อนเปลี่ยนชื่อตาราง ใช้ branch = พื้นที่ ซึ่งตอนนี้ branch = สาขา
+const PROFILE_KEY = 'ft_staff_profile_v2';
+try { localStorage.removeItem('ft_staff_profile'); localStorage.removeItem('ft_tickets_cache'); } catch (e) {}
+let staffProfile   = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');  // { name, position, role, office, branch, department, province }
+
+// ปุ่มยกเลิกงานแสดงเฉพาะแอดมิน (ด่านจริงคือ ACL ของ deleteTicket ฝั่ง backend)
+// โหมดตัวอย่างเปิดให้ลองได้ เพราะไม่บันทึกจริงอยู่แล้ว
+function isAdminUser() {
+  return usingMock || (!!staffProfile && roleOf(staffProfile.role) === 'admin');
+}
 
 const callBackend = (action, data) => ftCallBackend(action, data);
 
@@ -152,7 +163,7 @@ function setAuthExpired(on) {
    จึงเก็บผลลัพธ์ล่าสุดไว้ แล้ววาดทันทีตอนเปิด จากนั้นค่อยดึงของใหม่มาทับเบื้องหลัง
    ผู้ใช้เห็นบอร์ดทันที แต่ต้องบอกให้ชัดว่ากำลังอัปเดตอยู่ ไม่งั้นจะเข้าใจผิดว่าสดแล้ว
    ---------------------------------------------------------------------------- */
-const TICKET_CACHE_KEY = 'ft_tickets_cache';
+const TICKET_CACHE_KEY = 'ft_tickets_v2';
 const TICKET_CACHE_MAX_AGE = 24 * 3600e3;   // เกิน 1 วันถือว่าเก่าเกินกว่าจะเอามาโชว์
 
 function readTicketCache() {
@@ -189,18 +200,18 @@ function setStale(on, savedAt) {
 const MOCK_NOW = Date.now();
 const hrsAgo = (h) => new Date(MOCK_NOW - h * 3600e3).toISOString();
 const MOCK = [
-  { id:125, code:'TK-125', detail:'ปริ้นเตอร์ที่ชั้น 3 พิมพ์ไม่ออก', category:'ฮาร์ดแวร์', dept:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'กัญญาภัทร', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(2), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:126, code:'TK-126', detail:'ต้องการตั้งค่าอีเมลในมือถือใหม่', category:'ซอฟต์แวร์', dept:'สาขาหาดใหญ่', province:'สงขลา', reporter:'นพดล', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(5), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:127, code:'TK-127', detail:'ลืมรหัสผ่านเข้าระบบ CRM', category:'ซอฟต์แวร์', dept:'สาขาเมืองตรัง', province:'ตรัง', reporter:'วิภาดา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(9), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:124, code:'TK-124', detail:'เน็ตหลุดบ่อยช่วงบ่าย', category:'เครือข่าย', dept:'สาขาเมืองนราธิวาส', province:'นราธิวาส', reporter:'ฮาซัน', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(96), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:123, code:'TK-123', detail:'จอมอนิเตอร์มีเส้นแนวตั้ง', category:'ฮาร์ดแวร์', dept:'สาขาเมืองยะลา', province:'ยะลา', reporter:'ปรีชา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(120), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:122, code:'TK-122', detail:'ขอติดตั้งโปรแกรม AutoCAD', category:'ซอฟต์แวร์', dept:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'ประสิทธิ์', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(6), acceptedAt:hrsAgo(2), closedAt:null, pdfUrl:'' },
-  { id:121, code:'TK-121', detail:'ตั้งค่าเครื่องสแกนใหม่', category:'ฮาร์ดแวร์', dept:'สาขาเมืองพัทลุง', province:'พัทลุง', reporter:'สมหญิง', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(28), acceptedAt:hrsAgo(20), closedAt:null, pdfUrl:'' },
-  { id:120, code:'TK-120', detail:'อัปเกรด RAM เครื่อง Design', category:'ฮาร์ดแวร์', dept:'สาขาหาดใหญ่', province:'สงขลา', reporter:'มานี', assignee:'วิชัย ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(10), acceptedAt:hrsAgo(4), closedAt:null, pdfUrl:'' },
-  { id:119, code:'TK-119', detail:'อีเมลส่งออกไม่ได้', category:'ซอฟต์แวร์', dept:'สาขาเมืองปัตตานี', province:'ปัตตานี', reporter:'นูรีดา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(72), acceptedAt:hrsAgo(66), closedAt:hrsAgo(50), pdfUrl:'' },
-  { id:118, code:'TK-118', detail:'เปลี่ยนสาย LAN ใหม่', category:'เครือข่าย', dept:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'สุรชัย', assignee:'สมคิด ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(30), acceptedAt:hrsAgo(28), closedAt:hrsAgo(24), pdfUrl:'' },
-  { id:117, code:'TK-117', detail:'ขอสิทธิ์เข้าระบบสารบรรณ', category:'อื่นๆ', dept:'สาขาเมืองสตูล', province:'สตูล', reporter:'ยะห์ยา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(140), acceptedAt:hrsAgo(130), closedAt:hrsAgo(120), pdfUrl:'' },
-  { id:115, code:'TK-115', detail:'ตั้งค่าแชร์ปริ้นเตอร์', category:'ฮาร์ดแวร์', dept:'สาขาเบตง', province:'ยะลา', reporter:'อารีย์', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(50), acceptedAt:hrsAgo(48), closedAt:hrsAgo(26), pdfUrl:'' },
+  { id:125, code:'TK-125', detail:'ปริ้นเตอร์ที่ชั้น 3 พิมพ์ไม่ออก', category:'ฮาร์ดแวร์', branch:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'กัญญาภัทร', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(2), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:126, code:'TK-126', detail:'ต้องการตั้งค่าอีเมลในมือถือใหม่', category:'ซอฟต์แวร์', branch:'สาขาหาดใหญ่', province:'สงขลา', reporter:'นพดล', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(5), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:127, code:'TK-127', detail:'ลืมรหัสผ่านเข้าระบบ CRM', category:'ซอฟต์แวร์', branch:'สาขาเมืองตรัง', province:'ตรัง', reporter:'วิภาดา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(9), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:124, code:'TK-124', detail:'เน็ตหลุดบ่อยช่วงบ่าย', category:'เครือข่าย', branch:'สาขาเมืองนราธิวาส', province:'นราธิวาส', reporter:'ฮาซัน', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(96), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:123, code:'TK-123', detail:'จอมอนิเตอร์มีเส้นแนวตั้ง', category:'ฮาร์ดแวร์', branch:'สาขาเมืองยะลา', province:'ยะลา', reporter:'ปรีชา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(120), acceptedAt:null, closedAt:null, pdfUrl:'' },
+  { id:122, code:'TK-122', detail:'ขอติดตั้งโปรแกรม AutoCAD', category:'ซอฟต์แวร์', branch:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'ประสิทธิ์', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(6), acceptedAt:hrsAgo(2), closedAt:null, pdfUrl:'' },
+  { id:121, code:'TK-121', detail:'ตั้งค่าเครื่องสแกนใหม่', category:'ฮาร์ดแวร์', branch:'สาขาเมืองพัทลุง', province:'พัทลุง', reporter:'สมหญิง', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(28), acceptedAt:hrsAgo(20), closedAt:null, pdfUrl:'' },
+  { id:120, code:'TK-120', detail:'อัปเกรด RAM เครื่อง Design', category:'ฮาร์ดแวร์', branch:'สาขาหาดใหญ่', province:'สงขลา', reporter:'มานี', assignee:'วิชัย ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(10), acceptedAt:hrsAgo(4), closedAt:null, pdfUrl:'' },
+  { id:119, code:'TK-119', detail:'อีเมลส่งออกไม่ได้', category:'ซอฟต์แวร์', branch:'สาขาเมืองปัตตานี', province:'ปัตตานี', reporter:'นูรีดา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(72), acceptedAt:hrsAgo(66), closedAt:hrsAgo(50), pdfUrl:'' },
+  { id:118, code:'TK-118', detail:'เปลี่ยนสาย LAN ใหม่', category:'เครือข่าย', branch:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'สุรชัย', assignee:'สมคิด ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(30), acceptedAt:hrsAgo(28), closedAt:hrsAgo(24), pdfUrl:'' },
+  { id:117, code:'TK-117', detail:'ขอสิทธิ์เข้าระบบสารบรรณ', category:'อื่นๆ', branch:'สาขาเมืองสตูล', province:'สตูล', reporter:'ยะห์ยา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(140), acceptedAt:hrsAgo(130), closedAt:hrsAgo(120), pdfUrl:'' },
+  { id:115, code:'TK-115', detail:'ตั้งค่าแชร์ปริ้นเตอร์', category:'ฮาร์ดแวร์', branch:'สาขาเบตง', province:'ยะลา', reporter:'อารีย์', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(50), acceptedAt:hrsAgo(48), closedAt:hrsAgo(26), pdfUrl:'' },
 ];
 
 // ---------- โหลดตั๋ว ----------
@@ -251,8 +262,9 @@ function normalize(t) {
     code: t.code || ('TK-' + t.id),
     detail: t.detail || '(ไม่มีรายละเอียด)',
     category: cleanCategory(t.category || ''),
-    branch: t.branch || '',
-    dept: t.dept || '',
+    office: t.office || '',           // พื้นที่
+    branch: t.branch || '',       // สาขา — ว่าง = ตั๋วเก่าที่ไม่รู้สาขา
+    department: t.department || '',     // ส่วน — ว่าง = ตั๋วก่อนเริ่มเก็บส่วนลง DB
     province: t.province || '',   // ใช้กับแผนที่ (ถ้าไม่มี จะ fallback เดาจากชื่อสาขาใน normProv)
     reporter: t.reporter || '-',
     assignee: t.assignee || null,
@@ -285,7 +297,7 @@ function boardItems(status) {
 
   const q = boardSearch.trim().toLowerCase();
   if (q) items = items.filter(t =>
-    [t.code, t.detail, t.reporter, t.assignee, t.dept, t.branch, t.province, t.category]
+    [t.code, t.detail, t.reporter, t.assignee, t.branch, t.department, t.office, t.province, t.category]
       .some(v => String(v || '').toLowerCase().includes(q)));
 
   // เรียงตามเวลาที่ "ตรงกับสถานะนั้น" ไม่ใช่เวลาแจ้งเสมอไป
@@ -466,16 +478,23 @@ function cardEl(t) {
       : `<button data-act="reopen" class="card-act bg-slate-100 text-slate-500 hover:text-slate-700 font-medium inline-flex items-center gap-1">${icon('rotate-ccw', 'w-3.5 h-3.5')}เปิดใหม่</button>`;
   }
 
+  // "สาขาหาดใหญ่ · ส่วนอำนวยการ" — ตั๋วเก่าที่ไม่รู้สาขาใช้ชื่อพื้นที่แทน
+  // ชื่อสาขาเก็บเต็ม (มีชื่อพื้นที่อยู่แล้ว) — ตัดคำนำหน้าที่ซ้ำทุกการ์ดให้สั้นลง: "พื้นที่สงขลา สาขาหาดใหญ่ · ส่วน..."
+  const place = [ftShortOrg(t.branch || t.office), t.department].filter(Boolean).join(' · ');
+
   el.innerHTML = `
     <div class="flex items-start justify-between gap-2 mb-1.5">
       <span class="font-bold text-slate-700 inline-flex items-center gap-1.5 min-w-0">
         <span class="truncate">${escapeHtml(t.code)}</span>
         ${isOld ? `<span class="tk-age shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">ค้าง ${Math.floor(ageDays)} วัน</span>` : ''}
       </span>
-      ${t.category ? `<span class="tk-cat text-[11px] px-2 py-0.5 rounded-full shrink-0 ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}
+      <span class="inline-flex items-center gap-1 shrink-0">
+        ${t.category ? `<span class="tk-cat text-[11px] px-2 py-0.5 rounded-full ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}
+        ${isAdminUser() ? `<button data-act="cancel" class="tk-del text-slate-400 hover:text-red-600 p-1 -m-1 rounded" title="ยกเลิกงาน" aria-label="ยกเลิกงาน ${escapeHtml(t.code)}">${icon('trash-2', 'w-3.5 h-3.5')}</button>` : ''}
+      </span>
     </div>
     <p class="tk-detail text-sm text-slate-700 leading-snug mb-2">${escapeHtml(t.detail)}</p>
-    ${(t.dept || t.branch) ? `<div class="tk-place text-xs text-slate-500 mb-2.5 flex items-center gap-1 min-w-0">${icon('map-pin', 'w-3.5 h-3.5')}<span class="truncate">${escapeHtml(t.dept || t.branch)}</span></div>` : ''}
+    ${place ? `<div class="tk-place text-xs text-slate-500 mb-2.5 flex items-center gap-1 min-w-0">${icon('map-pin', 'w-3.5 h-3.5')}<span class="truncate">${escapeHtml(place)}</span></div>` : ''}
     <div class="tk-meta flex items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
       <span class="inline-flex items-center gap-1 min-w-0">
         ${icon('user', 'w-3.5 h-3.5')}<span class="truncate">${escapeHtml(t.assignee || t.reporter)}</span>
@@ -491,17 +510,39 @@ function cardEl(t) {
   });
   el.addEventListener('dragend', () => el.classList.remove('drag-ghost'));
 
-  const btn = el.querySelector('[data-act]');
-  if (btn) btn.addEventListener('click', (e) => {
+  el.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', (e) => {
     e.stopPropagation();
     const act = btn.dataset.act;
     if (act === 'accept')  moveTicket(t.id, STATUS.IN_PROGRESS);
     if (act === 'close')   requestClose(t.id);
     if (act === 'reopen')  moveTicket(t.id, STATUS.OPEN);
     if (act === 'pdf')     openPdf(t);
-  });
+    if (act === 'cancel')  cancelTicket(t);
+  }));
 
   return el;
+}
+
+// ---------- ยกเลิกงาน (Admin) — soft delete: หายจากบอร์ด/แดชบอร์ด แต่แถวและ PDF ยังอยู่ ----------
+// ไม่ทำ optimistic update: ยกเลิกแล้วย้อนเองไม่ได้จากหน้าเว็บ ต้องรอ backend ยืนยันก่อนเอาออก
+async function cancelTicket(t) {
+  const ok = await ftConfirm(
+    'งานจะหายจากตารางงานและแดชบอร์ด ผู้แจ้งจะเห็นสถานะ "ยกเลิกแล้ว" ในหน้าประวัติ\nข้อมูลและเอกสาร PDF ยังเก็บไว้ (ผู้ดูแลฐานข้อมูลกู้คืนได้)',
+    { title: `ยกเลิกงาน ${t.code}?`, confirmText: 'ยกเลิกงาน', danger: true, icon: 'trash-2' });
+  if (!ok) return;
+  try {
+    if (!usingMock) {
+      const res = await callBackend('deleteTicket', { ticketId: t.id });
+      if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ยกเลิกงานไม่สำเร็จ');
+    }
+    tickets = tickets.filter(x => x.id !== t.id);
+    writeTicketCache(tickets);
+    render();
+    ftToast(`ยกเลิกงาน ${t.code} แล้ว`, 'success');
+  } catch (e) {
+    ftToast(e.message, 'error');
+    if (isAuthError(e)) setAuthExpired(true);
+  }
 }
 
 // ---------- ย้ายสถานะตั๋ว (optimistic update + revert เมื่อ backend ปฏิเสธ) ----------
@@ -571,7 +612,7 @@ function setStaffUI() {
     if (infoEl) {
       const parts = [];
       if (staffProfile && staffProfile.position) parts.push(staffProfile.position);
-      if (staffProfile && staffProfile.branch) parts.push(staffProfile.branch);
+      if (staffProfile && staffProfile.office) parts.push(staffProfile.office);
       if (parts.length) { infoEl.innerText = parts.join(' · '); infoEl.classList.remove('hidden'); }
       else infoEl.classList.add('hidden');
     }
@@ -598,7 +639,7 @@ async function loadMyProfile() {
     const res = await callBackend('getMyProfile', {});
     if (res && res.status === 'success' && res.profile) {
       staffProfile = res.profile;
-      localStorage.setItem('ft_staff_profile', JSON.stringify(staffProfile));
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(staffProfile));
       // อัปเดตชื่อที่ใช้จับคู่ "งานของฉัน" บนบอร์ดด้วย (ถ้า DB มีชื่อจริง)
       if (staffProfile.name) {
         currentStaff = staffProfile.name;
@@ -658,7 +699,7 @@ function finishClose(resolutionText) {
    ============================================================================= */
 
 // คืนชื่อจังหวัดที่รู้จักเท่านั้น ไม่งั้นคืน '' (= ไม่ระบุ)
-// ปกติใช้ BRANCH.Province จาก backend ถ้าไม่มีจะเดาจากชื่อสาขา
+// ปกติใช้ EXCISE_OFFICE.Province จาก backend ถ้าไม่มีจะเดาจากชื่อพื้นที่
 // ห้ามคืนสตริงดิบ: "สำนักงานสรรพสามิตภาคที่ 9" ไม่ใช่จังหวัด
 // ถ้าปล่อยผ่านจะโผล่เป็นจังหวัดปลอมในอันดับพื้นที่
 function normProv(s) {
@@ -723,7 +764,7 @@ function renderDashboard() {
   if (!cats.length) catBox.innerHTML = `<div class="text-xs" style="color:var(--ink-muted)">ยังไม่มีข้อมูล</div>`;
   cats.forEach(([k, v]) => catBox.appendChild(barRow(k, v, catMax, cssVar('--st-prog'))));
 
-  const provs = countBy(all, t => normProv(t.province || t.branch) || NO_PROV);
+  const provs = countBy(all, t => normProv(t.province || t.office) || NO_PROV);
   const provMax = provs.length ? provs[0][1] : 0;
   const provBox = $('provBars'); provBox.innerHTML = '';
   if (!provs.length) provBox.innerHTML = `<div class="text-xs" style="color:var(--ink-muted)">ยังไม่มีข้อมูล</div>`;
@@ -750,7 +791,7 @@ function renderDashboard() {
     tr.innerHTML = `
       <td class="py-2 pr-3 font-bold whitespace-nowrap" style="color:var(--ink)">${escapeHtml(t.code)}</td>
       <td class="py-2 pr-3 sm:max-w-[22rem] truncate" style="color:var(--ink-2)">${escapeHtml(t.detail)}</td>
-      <td class="py-2 pr-3 text-xs whitespace-nowrap hidden sm:table-cell" style="color:var(--ink-muted)">${escapeHtml(normProv(t.province || t.branch) || '-')}</td>
+      <td class="py-2 pr-3 text-xs whitespace-nowrap hidden sm:table-cell" style="color:var(--ink-muted)">${escapeHtml(normProv(t.province || t.office) || '-')}</td>
       <td class="py-2 pr-3 text-right whitespace-nowrap tabular-nums text-xs font-semibold"
           style="color:${hot ? 'var(--st-open)' : 'var(--ink-2)'}">${hot ? icon('flame', 'w-3.5 h-3.5 inline -mt-0.5 mr-0.5') : ''}${timeAgo(t.createdAt).replace('ที่แล้ว','').trim()}</td>`;
     agingBody.appendChild(tr);
@@ -845,7 +886,7 @@ function scheduleTipHide(tip) {
 function renderMap(all) {
   const svg = $('provMap');
   const counts = new Map(PROVINCES.map(p => [p.key, 0]));
-  all.forEach(t => { const k = normProv(t.province || t.branch); if (counts.has(k)) counts.set(k, counts.get(k) + 1); });
+  all.forEach(t => { const k = normProv(t.province || t.office); if (counts.has(k)) counts.set(k, counts.get(k) + 1); });
   const max = Math.max(0, ...counts.values());
 
   // bucket -> ramp เฉดเดียว (เข้ม = เยอะ) · 0 ตั๋ว = สีพื้น ไม่ใช่เฉดอ่อนสุด
@@ -905,11 +946,12 @@ function renderMap(all) {
    ============================================================================= */
 
 const MOCK_USERS = [
-  { userId:'Umock-admin-001', name:'นายสองพัน แซ่ชั่น', position:'เจ้าหน้าที่ไอที', role:'admin', dept:'ส่วนเทคโนโลยีสารสนเทศ', branch:'สำนักงานสรรพสามิตภาคที่ 9', province:'สงขลา', reported:2, assigned:5 },
-  { userId:'Umock-it-002', name:'วิชัย ไอที', position:'นักวิชาการคอมพิวเตอร์', role:'it', dept:'ส่วนเทคโนโลยีสารสนเทศ', branch:'สำนักงานสรรพสามิตภาคที่ 9', province:'สงขลา', reported:0, assigned:4 },
-  { userId:'Umock-staff-003', name:'กัญญาภัทร ใจดี', position:'เจ้าหน้าที่ธุรการ', role:'Staff', dept:'ส่วนอำนวยการ', branch:'สาขาเมืองสงขลา', province:'สงขลา', reported:3, assigned:0 },
-  { userId:'Umock-staff-004', name:'นพดล รักงาน', position:'นักตรวจสอบภาษี', role:'Staff', dept:'ส่วนบริหารจัดเก็บภาษี', branch:'สาขาหาดใหญ่', province:'สงขลา', reported:1, assigned:0 },
-  { userId:'Umock-staff-005', name:'นูรีดา สาและ', position:'เจ้าหน้าที่ทั่วไป', role:'Staff', dept:'ส่วนอำนวยการ', branch:'สาขาเมืองปัตตานี', province:'ปัตตานี', reported:1, assigned:0 },
+  // office = พื้นที่ · branch = สาขา · department = ส่วน (ตรงกับที่ getUsers ส่งมา)
+  { userId:'Umock-admin-001', name:'นายสองพัน แซ่ชั่น', position:'เจ้าหน้าที่ไอที', role:'admin', office:'สำนักงานสรรพสามิตภาคที่ 9', branch:'สำนักงานสรรพสามิตภาคที่ 9 (สำนักงานใหญ่)', department:'ส่วนเทคโนโลยีสารสนเทศ', province:'สงขลา', reported:2, assigned:5 },
+  { userId:'Umock-it-002', name:'วิชัย ไอที', position:'นักวิชาการคอมพิวเตอร์', role:'it', office:'สำนักงานสรรพสามิตภาคที่ 9', branch:'สำนักงานสรรพสามิตภาคที่ 9 (สำนักงานใหญ่)', department:'ส่วนเทคโนโลยีสารสนเทศ', province:'สงขลา', reported:0, assigned:4 },
+  { userId:'Umock-staff-003', name:'กัญญาภัทร ใจดี', position:'เจ้าหน้าที่ธุรการ', role:'Staff', office:'สำนักงานสรรพสามิตพื้นที่สงขลา', branch:'สาขาเมืองสงขลา', department:'ส่วนอำนวยการ', province:'สงขลา', reported:3, assigned:0 },
+  { userId:'Umock-staff-004', name:'นพดล รักงาน', position:'นักตรวจสอบภาษี', role:'Staff', office:'สำนักงานสรรพสามิตพื้นที่สงขลา', branch:'สาขาหาดใหญ่', department:'ส่วนบริหารจัดเก็บภาษี', province:'สงขลา', reported:1, assigned:0 },
+  { userId:'Umock-staff-005', name:'นูรีดา สาและ', position:'เจ้าหน้าที่ทั่วไป', role:'Staff', office:'สำนักงานสรรพสามิตพื้นที่ปัตตานี', branch:'สาขาเมืองปัตตานี', department:'ส่วนอำนวยการ', province:'ปัตตานี', reported:1, assigned:0 },
 ];
 
 function normalizeUser(u) {
@@ -918,8 +960,9 @@ function normalizeUser(u) {
     name: u.name || '(ไม่มีชื่อ)',
     position: u.position || '-',
     role: roleOf(u.role),
-    dept: u.dept || '',
+    office: u.office || '',
     branch: u.branch || '',
+    department: u.department || '',
     province: u.province || '',
     reported: Number(u.reported) || 0,
     assigned: Number(u.assigned) || 0,
@@ -985,7 +1028,7 @@ function renderUsers() {
   const weight = { admin:0, it:1, staff:2 };
   const list = users
     .filter(u => userRoleFilter === 'all' || u.role === userRoleFilter)
-    .filter(u => !q || [u.name, u.position, u.branch, u.dept].some(s => String(s).toLowerCase().includes(q)))
+    .filter(u => !q || [u.name, u.position, u.office, u.branch, u.department].some(s => String(s).toLowerCase().includes(q)))
     .sort((a, b) => (weight[a.role] - weight[b.role]) || a.name.localeCompare(b.name, 'th'));
 
   const editable = canEditRoles();
@@ -1009,7 +1052,7 @@ function renderUsers() {
           <div class="min-w-0">
             <div class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(u.name)}${isMe ? ' <span class="text-[10px] font-normal text-brand-600">(คุณ)</span>' : ''}</div>
             <div class="text-[10px] truncate hidden lg:block" style="color:var(--ink-muted)">${escapeHtml(u.userId)}</div>
-            <div class="text-[10px] truncate lg:hidden" style="color:var(--ink-muted)">${escapeHtml(u.position)}${u.branch ? ' · ' + escapeHtml(u.branch) : ''}</div>
+            <div class="text-[10px] truncate lg:hidden" style="color:var(--ink-muted)">${escapeHtml(u.position)}${u.office ? ' · ' + escapeHtml(u.office) : ''}</div>
             <div class="text-[10px] truncate sm:hidden" style="color:var(--ink-muted)">แจ้งซ่อม ${u.reported} · รับผิดชอบ ${u.assigned}</div>
             <div class="lg:hidden mt-1">${roleBadge(u.role)}</div>
           </div>
@@ -1017,8 +1060,8 @@ function renderUsers() {
       </td>
       <td class="py-2.5 pr-3 text-xs hidden lg:table-cell" style="color:var(--ink-2)">${escapeHtml(u.position)}</td>
       <td class="py-2.5 pr-3 text-xs hidden lg:table-cell" style="color:var(--ink-2)">
-        <div class="truncate max-w-[16rem]">${escapeHtml(u.branch || '-')}</div>
-        <div class="text-[10px] truncate max-w-[16rem]" style="color:var(--ink-muted)">${escapeHtml(u.dept || '')}</div>
+        <div class="truncate max-w-[16rem]">${escapeHtml(u.office || '-')}</div>
+        <div class="text-[10px] truncate max-w-[16rem]" style="color:var(--ink-muted)">${escapeHtml([ftShortOrg(u.branch), u.department].filter(Boolean).join(' · '))}</div>
       </td>
       <td class="py-2.5 pr-3 hidden lg:table-cell">${roleBadge(u.role)}</td>
       <td class="py-2.5 pr-3 text-right tabular-nums text-xs hidden sm:table-cell" style="color:var(--ink-2)">${u.reported}</td>
@@ -1222,18 +1265,21 @@ async function deleteKbArticle(article) {
 }
 
 /* =============================================================================
-   ข้อมูลหลัก (Master Data) — พื้นที่ (BRANCH) · สาขา (DEPARTMENT) · หมวดหมู่ (ISSUE_CATEGORY)
+   ข้อมูลหลัก (Master Data) — พื้นที่ (EXCISE_OFFICE) · สาขา (BRANCH) · ส่วน (DEPARTMENT) · หมวดหมู่ (ISSUE_CATEGORY)
    ไม่มีข้อมูลจำลอง: ถ้าโหลดไม่ได้ให้เห็นว่าว่าง ดีกว่าแก้ของปลอมแล้วคิดว่าบันทึกแล้ว
    ไม่ทำ optimistic update — แก้นานๆ ครั้ง และ backend อาจปฏิเสธ (ชื่อซ้ำ/ยังถูกใช้อยู่)
+   คำสั่งเขียนต้องแนบ apiVersion — backend ปฏิเสธหน้าเว็บรุ่นเก่าที่ใช้ "branch" ในความหมายพื้นที่
    ============================================================================= */
 const MASTER_TYPES = {
-  branch:   { label: 'พื้นที่',       key: 'branches' },
-  dept:     { label: 'สาขา',         key: 'depts' },
+  office:     { label: 'พื้นที่',       key: 'offices' },
+  branch:   { label: 'สาขา',         key: 'branches' },
+  department:  { label: 'ส่วน',         key: 'departments' },
   category: { label: 'หมวดหมู่ปัญหา', key: 'categories' },
 };
-let masterData = { branches: [], depts: [], categories: [] };
+const emptyMaster = () => ({ offices: [], branches: [], departments: [], categories: [] });
+let masterData = emptyMaster();
 let masterLoaded = false;
-let masterTab = 'branch';
+let masterTab = 'office';
 let masterEditing = null;   // { type, id } — id = null คือเพิ่มใหม่
 
 async function loadMaster() {
@@ -1242,11 +1288,11 @@ async function loadMaster() {
   try {
     const res = await callBackend('getMasterData', { withUsage: true });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend');
-    masterData = { branches: res.branches || [], depts: res.depts || [], categories: res.categories || [] };
+    masterData = { offices: res.offices || [], branches: res.branches || [], departments: res.departments || [], categories: res.categories || [] };
     $('masterErrorBanner').classList.add('hidden');
     setAuthExpired(false);
   } catch (e) {
-    masterData = { branches: [], depts: [], categories: [] };
+    masterData = emptyMaster();
     $('masterErrorReason').innerText = 'สาเหตุ: ' + e.message;
     $('masterErrorBanner').classList.remove('hidden');
     if (isAuthError(e)) setAuthExpired(true);
@@ -1260,7 +1306,7 @@ const usageText = (r) => (r.usedBy && r.usedBy.length)
   ? r.usedBy.map(u => u.label + ' ' + u.n).join(' · ')
   : (r.used ? 'ใช้อยู่ ' + r.used : 'ยังไม่ถูกใช้');
 
-const branchName = (id) => (masterData.branches.find(b => b.id === id) || {}).name || '(ไม่พบพื้นที่ #' + id + ')';
+const officeName = (id) => (masterData.offices.find(a => a.id === id) || {}).name || '(ไม่พบพื้นที่ #' + id + ')';
 
 function renderMaster() {
   document.querySelectorAll('.master-tab').forEach(b => {
@@ -1272,15 +1318,21 @@ function renderMaster() {
   $('masterAddLabel').innerText = MASTER_TYPES[masterTab].label;
 
   let rows = masterData[MASTER_TYPES[masterTab].key];
-  // สาขาเรียงตามพื้นที่ก่อน จะได้อ่านเป็นกลุ่มเหมือนในฟอร์มแจ้งซ่อม
-  if (masterTab === 'dept') rows = [...rows].sort((a, b) => (a.branchId - b.branchId) || (a.id - b.id));
+  // เรียงตามผังหน่วยงานเหมือน dropdown ในฟอร์มแจ้งซ่อม (ftSortOffices / ftSortBranches ใน common.js)
+  // สาขา: จัดตามลำดับพื้นที่ก่อน แล้วชื่อในพื้นที่
+  if (masterTab === 'office') rows = ftSortOffices(rows);
+  if (masterTab === 'branch') {
+    const order = new Map(ftSortOffices(masterData.offices).map((o, i) => [o.id, i]));
+    rows = ftSortBranches(rows).sort((a, b) => (order.get(a.officeId) ?? 999) - (order.get(b.officeId) ?? 999));
+  }
 
   $('masterEmpty').classList.toggle('hidden', rows.length > 0);
   const box = $('masterList');
   box.innerHTML = '';
   rows.forEach(r => {
-    const sub = masterTab === 'branch' ? (r.province ? 'จังหวัด' + r.province : '')
-              : masterTab === 'dept'   ? branchName(r.branchId) : '';
+    const sub = masterTab === 'office'
+      ? [r.parentId ? 'สังกัด ' + officeName(r.parentId) : 'ระดับบนสุด', r.province ? 'จังหวัด' + r.province : ''].filter(Boolean).join(' · ')
+      : masterTab === 'branch' ? (r.name === officeName(r.officeId) ? 'ตัวสำนักงาน (ไม่ใช่สาขา)' : '') : '';
     const el = document.createElement('div');
     el.className = 'flex items-center gap-3 py-2.5';
     el.innerHTML = `
@@ -1307,18 +1359,58 @@ function openMasterModal(type, row) {
     ? `ถูกใช้อยู่ใน ${usageText(row)} — ชื่อที่แก้จะมีผลกับข้อมูลเดิมทั้งหมดด้วย`
     : 'จะแสดงเป็นตัวเลือกในฟอร์มแจ้งซ่อม';
   $('masterName').value = row ? row.name : '';
-  $('masterProvinceRow').classList.toggle('hidden', type !== 'branch');
-  $('masterProvince').value = row && type === 'branch' ? row.province : '';
-  $('masterBranchRow').classList.toggle('hidden', type !== 'dept');
-  if (type === 'dept') {
-    $('masterBranch').innerHTML = '<option value="">-- เลือกพื้นที่ --</option>' +
-      masterData.branches.map(b => `<option value="${b.id}">${escapeHtml(b.name)}</option>`).join('');
-    $('masterBranch').value = row ? String(row.branchId) : '';
+  $('masterProvinceRow').classList.toggle('hidden', type !== 'office');
+  $('masterProvince').value = row && type === 'office' ? row.province : '';
+  $('masterOfficeRow').classList.toggle('hidden', type !== 'branch');
+  $('masterParentRow').classList.toggle('hidden', type !== 'office');
+  masterNamePrefix = '';
+  if (type === 'branch') {
+    $('masterOffice').innerHTML = '<option value="">-- เลือกพื้นที่ --</option>' +
+      ftSortOffices(masterData.offices).map(a => `<option value="${a.id}">${escapeHtml(a.name)}</option>`).join('');
+    $('masterOffice').value = row ? String(row.officeId) : '';
   }
+  if (type === 'office') {
+    // รองรับ 2 ชั้น (ภาค -> พื้นที่): เลือกได้เฉพาะหน่วยงานระดับบนสุดที่ไม่ใช่ตัวเอง
+    const roots = ftSortOffices(masterData.offices).filter(o => !o.parentId && (!row || o.id !== row.id));
+    $('masterParent').innerHTML = '<option value="">— ไม่มี (ระดับบนสุด) —</option>' +
+      roots.map(o => `<option value="${o.id}">${escapeHtml(o.name)}</option>`).join('');
+    // พื้นที่ใหม่สังกัดภาค 9 เป็นค่าเริ่มต้น (มีระดับบนสุดตัวเดียว)
+    $('masterParent').value = row ? (row.parentId ? String(row.parentId) : '') : (roots.length === 1 ? String(roots[0].id) : '');
+  }
+  updateMasterNameHint();
   $('masterFormError').classList.add('hidden');
   $('masterModal').classList.remove('hidden');
-  $('masterName').focus();
+  (type === 'branch' && !row ? $('masterOffice') : $('masterName')).focus();
 }
+
+// สาขาเก็บชื่อเต็ม — เลือกพื้นที่แล้วเติม "ชื่อพื้นที่ " ให้ (เฉพาะตอนช่องชื่อว่าง หรือยังเป็นคำนำหน้าที่เราเติมไว้)
+let masterNamePrefix = '';
+function updateMasterNameHint() {
+  const hint = $('masterNameHint');
+  const type = masterEditing && masterEditing.type;
+  if (type === 'branch') {
+    const office = masterData.offices.find(o => String(o.id) === $('masterOffice').value);
+    hint.innerText = office
+      ? `ต้องขึ้นต้นด้วย "${office.name}" — ใช้ชื่อนี้เฉยๆ = ตัวสำนักงานพื้นที่ · เติม " สาขา..." = สาขา`
+      : 'เลือกพื้นที่ก่อน ระบบจะเติมคำนำหน้าชื่อให้';
+    hint.classList.remove('hidden');
+  } else if (type === 'office') {
+    hint.innerText = 'เปลี่ยนชื่อพื้นที่ — ชื่อสาขาในพื้นที่นี้จะเปลี่ยนคำนำหน้าตามให้อัตโนมัติ';
+    hint.classList.toggle('hidden', !masterEditing.id);
+  } else {
+    hint.classList.add('hidden');
+  }
+}
+$('masterOffice').addEventListener('change', () => {
+  const office = masterData.offices.find(o => String(o.id) === $('masterOffice').value);
+  const cur = $('masterName').value.trim();
+  if (office && (!cur || cur === masterNamePrefix.trim())) {
+    masterNamePrefix = office.name + ' ';
+    $('masterName').value = masterNamePrefix;
+    $('masterName').focus();
+  }
+  updateMasterNameHint();
+});
 
 function closeMasterModal() {
   $('masterModal').classList.add('hidden');
@@ -1329,18 +1421,28 @@ async function saveMaster() {
   if (!masterEditing || $('masterSaveBtn').disabled) return;   // กด Enter ซ้ำระหว่างรอ = เพิ่มซ้ำ
   const { type, id } = masterEditing;
   const item = { name: $('masterName').value.trim() };
-  if (type === 'branch') item.province = $('masterProvince').value.trim();
-  if (type === 'dept')   item.branchId = parseInt($('masterBranch').value, 10) || null;
+  if (type === 'office') {
+    item.province = $('masterProvince').value.trim();
+    item.parentId = parseInt($('masterParent').value, 10) || null;
+  }
+  if (type === 'branch') item.officeId = parseInt($('masterOffice').value, 10) || null;
 
   const showErr = (msg) => { $('masterFormError').innerText = msg; $('masterFormError').classList.remove('hidden'); };
   if (!item.name) return showErr('กรุณากรอกชื่อ');
-  if (type === 'dept' && !item.branchId) return showErr('กรุณาเลือกพื้นที่');
+  if (type === 'branch' && !item.officeId) return showErr('กรุณาเลือกพื้นที่');
+  if (type === 'branch') {
+    // ตรวจซ้ำกับ backend เพื่อบอกเร็ว ไม่ต้องรอรอบ GAS (ด่านจริงอยู่ที่ backend)
+    const office = masterData.offices.find(o => o.id === item.officeId);
+    if (office && item.name !== office.name && !item.name.startsWith(office.name + ' ')) {
+      return showErr(`ชื่อต้องขึ้นต้นด้วย "${office.name}"`);
+    }
+  }
 
   const btn = $('masterSaveBtn');
   btn.disabled = true;
   btn.innerText = 'กำลังบันทึก...';
   try {
-    const res = await callBackend(id ? 'updateMasterItem' : 'addMasterItem', { type, id, item });
+    const res = await callBackend(id ? 'updateMasterItem' : 'addMasterItem', { apiVersion: FT_API_VERSION, type, id, item });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'บันทึกไม่สำเร็จ');
     closeMasterModal();
     ftToast(res.message || 'บันทึกแล้ว', 'success');
@@ -1362,7 +1464,7 @@ async function deleteMaster(type, row) {
   }
   if (!(await ftConfirm('จะหายจากตัวเลือกในฟอร์มแจ้งซ่อมทันที', { title: `ลบ${label} "${row.name}"?`, confirmText: 'ลบ', danger: true, icon: 'trash-2' }))) return;
   try {
-    const res = await callBackend('deleteMasterItem', { type, id: row.id });
+    const res = await callBackend('deleteMasterItem', { apiVersion: FT_API_VERSION, type, id: row.id });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ลบไม่สำเร็จ');
     ftToast(res.message || 'ลบแล้ว', 'success');
     await loadMaster();
@@ -1395,7 +1497,8 @@ function renderSettings() {
     : `<span class="w-12 h-12 rounded-full bg-brand-600 text-white text-sm font-bold flex items-center justify-center shrink-0">${escapeHtml(displayName.trim().charAt(0) || '?')}</span>`;
   const sp = staffProfile || {};
   const role = me ? me.role : (sp.role ? roleOf(sp.role) : null);
-  const infoParts = [sp.position, sp.dept, sp.branch].filter(Boolean);
+  // ชื่อสาขาเต็มมีชื่อพื้นที่อยู่แล้ว ไม่ต้องต่อชื่อพื้นที่ซ้ำ (ใช้ชื่อพื้นที่เฉพาะตอนไม่รู้สาขา)
+  const infoParts = [sp.position, sp.department, sp.branch || sp.office].filter(Boolean);
   box.innerHTML = `
     <div class="flex items-center gap-3">
       ${avatarHtml}
@@ -1418,7 +1521,7 @@ async function doLogout() {
   localStorage.removeItem('ft_staff');
   localStorage.removeItem('ft_staff_id');
   localStorage.removeItem('ft_staff_pic');
-  localStorage.removeItem('ft_staff_profile');
+  localStorage.removeItem(PROFILE_KEY);
   clearTicketCache();   // ตั๋วที่แคชไว้เป็นข้อมูลของหน่วยงาน ห้ามค้างให้คนถัดไปเห็น
   try { if (typeof liff !== 'undefined' && liff.isLoggedIn && liff.isLoggedIn()) liff.logout(); } catch (e) { /* ไม่ต้องบล็อกถ้า logout ฝั่ง LIFF พัง */ }
   location.reload();
@@ -1491,7 +1594,7 @@ $('kbEditModal').addEventListener('click', (e) => { if (e.target === $('kbEditMo
 document.querySelectorAll('.master-tab').forEach(b =>
   b.addEventListener('click', () => { masterTab = b.dataset.tab; renderMaster(); }));
 $('masterAddBtn').addEventListener('click', () => {
-  if (masterTab === 'dept' && !masterData.branches.length) return ftToast('ต้องมีพื้นที่อย่างน้อย 1 รายการก่อนเพิ่มสาขา', 'info');
+  if (masterTab === 'branch' && !masterData.offices.length) return ftToast('ต้องมีพื้นที่อย่างน้อย 1 รายการก่อนเพิ่มสาขา', 'info');
   openMasterModal(masterTab, null);
 });
 $('masterCancelBtn').addEventListener('click', closeMasterModal);
@@ -1513,6 +1616,7 @@ window.addEventListener('resize', () => {
 // ถ้า currentView เป็น view ที่ผลลัพธ์ขึ้นกับตัวตน (settings แสดงบัญชี, users มีปุ่มแก้บทบาท)
 // ต้องวาดใหม่หลัง LIFF login resolve เสร็จ ไม่งั้นค้างสถานะ "ยังไม่ login" ทั้งที่ล็อกอินแล้ว
 function refreshIdentityDependentViews() {
+  if (currentView === 'board') render();   // ปุ่มยกเลิกงานบนการ์ดขึ้นกับบทบาท
   if (currentView === 'settings') renderSettings();
   if (currentView === 'users' && usersLoaded) renderUsers();
 }

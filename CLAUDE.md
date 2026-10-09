@@ -16,9 +16,13 @@
 ```
 LINE app → LIFF (DEMO/*.html บน Cloudflare Worker)
               ↓ fetch POST
-         Google Apps Script  ── gas/AdminApi.gs    (ลอจิกทั้งหมด · อยู่ใน git)
-                             ├─ gas/Template.html  (แม่แบบบันทึกข้อความ → PDF)
-                             └─ gas/Code.gs        (DB credentials เท่านั้น · gitignore)
+         Google Apps Script  ── gas/ApiRouter.gs     doPost + ตรวจ token + ACL
+                             ├─ gas/UseCases.gs      ลอจิกของแต่ละ action
+                             ├─ gas/Repositories.gs  SQL ทั้งหมด
+                             ├─ gas/Infrastructure.gs connection / transaction / Drive-PDF
+                             ├─ gas/Entities.gs      ค่าคงที่ + กฎตรวจค่า
+                             ├─ gas/Template.html    แม่แบบบันทึกข้อความ → PDF
+                             └─ gas/Code.gs          DB credentials เท่านั้น · gitignore
               ↓ JDBC
          Supabase Postgres          + Google Drive (เก็บ PDF บันทึกข้อความ)
 ```
@@ -32,6 +36,14 @@ LINE app → LIFF (DEMO/*.html บน Cloudflare Worker)
 - `DEMO/history.html` — ประวัติการแจ้งซ่อมของตัวเอง · `HISTORY_LIFF_ID`
 - `DEMO/admin.html` — คอนโซลเจ้าหน้าที่ IT: Dashboard / Task Board / ประวัติการแจ้งซ่อม / Users /
   ข้อมูลหลัก / Settings · `ADMIN_LIFF_ID`
+
+**ไฟล์ใน `gas/` แบ่งตาม Clean Architecture แต่ GAS ไม่มีระบบ module** — ทุกไฟล์อยู่ใน global
+scope เดียวกัน ชั้นจึงเป็นข้อตกลง: Router → UseCases → Repositories → Infrastructure, ทุกชั้นใช้ Entities ได้
+- **ห้ามตั้งชื่อฟังก์ชันซ้ำข้ามไฟล์** — GAS ไม่ error ตัวที่โหลดทีหลังทับตัวแรกเงียบๆ
+  (ตอน deploy จึงต้องลบ `AdminApi.gs` เดิมออกจากโปรเจกต์ GAS)
+- **`const` ระดับบนสุดห้ามอ้างค่าของไฟล์อื่น** — GAS โหลดไฟล์ตามลำดับในโปรเจกต์ อ้างข้ามไฟล์ได้
+  เฉพาะในตัวฟังก์ชัน (เช่น `handlers` ใน `doPost` สร้างตอนเรียก ไม่ใช่ตอนโหลด)
+- SQL อยู่ใน `Repositories.gs` ที่เดียว · use case เป็นคนเปิด connection / คุม transaction (`withTx_`)
 
 > `gas/Template.html` **ไม่ใช่หน้าเว็บ** ถึงจะเป็น `.html` — GAS อ่านผ่าน
 > `HtmlService.createTemplateFromFile('Template')` จากโปรเจกต์ Apps Script
@@ -48,6 +60,28 @@ LINE app → LIFF (DEMO/*.html บน Cloudflare Worker)
 GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/json` จะทำให้เบราว์เซอร์ยิง preflight
 ก่อน → ไม่มีคำตอบ → **ทุก request พังหมด** ส่วน `text/plain` เข้าเงื่อนไข CORS
 *simple request* จึงยิงตรงได้เลย body ยังเป็น JSON string ปกติ (backend `JSON.parse` เอง)
+
+`ftCallBackend` มี timeout (อ่าน 25 วิ / เขียน 60 วิ) และ **ลองซ้ำเองได้เฉพาะคำสั่งอ่าน (`get*`) 1 ครั้ง**
+— ห้ามให้คำสั่งเขียนลองซ้ำเอง (แจ้งซ่อมซ้ำ 2 ใบ) · GAS ที่พัง/เกินเวลาตอบเป็นหน้า HTML ไม่มี CORS
+เบราว์เซอร์จึงรายงานแค่ "Failed to fetch" — `ftFetchJson_` แปลงเป็นข้อความไทยที่บอกสาเหตุ
+สาเหตุจริงต้องดูที่ Apps Script → **Executions** (log ของแต่ละ request)
+
+**ความเร็ว:** GAS มีเพดานต่ำสุด ~1.5-2 วิ/request (วัดแล้ว: รันสคริปต์ 1-1.5 วิ + 302 redirect 0.4-0.6 วิ)
+DB อยู่โตเกียว (`ap-northeast-1` pooler :6543) แต่ GAS รันฝั่งอเมริกา — เปิด connection ใหม่ ~0.7-1.5 วิ
+- หน้าเว็บ: โชว์ข้อมูลที่จำในเครื่องก่อนแล้วอัปเดตทีหลัง (`ft_my_tickets_v2`, `ft_tickets_v2` ผูก LINE userId) ·
+  `<link rel="preconnect">` ไป GAS ทุกหน้า
+- **connection เดียวต่อ request** (`REQ_CONN_` ใน `Infrastructure.gs`) — `withConn_` ไม่ปิด connection เอง
+  `doPost` ปิดใน `finally` · ห้ามเรียก `getDbConnection()` ตรงๆ ใน use case/repository
+  · `withTx_` ต้องคืน `autoCommit(true)` เสมอ เพราะ connection ถูกใช้ต่อ
+- **แคชผลอ่าน** (`cachedRead_`): key ผูก "เลขเวอร์ชันข้อมูล" — `doPost` เปลี่ยนเลขนี้หลังคำสั่งที่ไม่ใช่ `get*`
+  สำเร็จทุกครั้ง (ยกเว้น `NO_DATA_CHANGE`) แคชเก่าทั้งหมดจึงใช้ไม่ได้ทันที ไม่ต้องไล่ลบ · TTL 10 นาที
+  = เพดานความค้างเมื่อแก้ตรงใน Supabase · เก็บแบบ gzip+base64 แบ่งก้อน 90KB (CacheService รับค่าละ ≤100KB)
+  - **คำสั่งอ่านต้องขึ้นต้นด้วย `get`** ไม่งั้นจะถูกนับเป็นคำสั่งเขียน (ล้างแคช + ไม่ลองซ้ำฝั่งหน้าเว็บ)
+  - **ผลที่ต่างกันตามผู้ใช้ ต้องมี `auth.userId` ในชื่อแคช** (`'my_' + userId`) ไม่งั้นคนหนึ่งเห็นข้อมูลอีกคน
+  - แคชอยู่ "หลัง" ACL เสมอ — ห้ามย้าย `cachedRead_` ไปไว้ก่อน `authorize_`
+  - คำสั่งเขียนใหม่ที่ไม่แตะ DB ให้เพิ่มใน `NO_DATA_CHANGE`
+- ข้อมูลหลักของฟอร์มใช้แคชแยก (`master_v2`, 6 ชม.) ไม่ผูกเวอร์ชัน — ล้างเฉพาะตอน Admin แก้ข้อมูลหลัก
+- ผลตรวจ LINE token แคชจนหมดอายุจริง · role แคชแค่ 5 นาที (ห้ามยืด — ลดสิทธิ์ตรงใน DB จะค้างนานเท่า TTL)
 
 ### 2.2 `Code.gs` ห้าม commit
 
@@ -104,19 +138,49 @@ GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/jso
 
 > **client ไม่เคยส่ง `userId` มา** — ถ้าเห็นโค้ดที่รับ `data.userId` มาเชื่อ นั่นคือช่องโหว่
 
-`ACL` (ใน `AdminApi.gs`): `'*'` = แค่ login พอ (รวมคนแจ้งซ่อมครั้งแรกที่ยังไม่มีแถวใน `USER`)
+`ACL` (ใน `ApiRouter.gs`): `'*'` = แค่ login พอ (รวมคนแจ้งซ่อมครั้งแรกที่ยังไม่มีแถวใน `USER`)
 
 | กลุ่ม | actions |
 |---|---|
 | `'*'` | `generateDocument`, `createTicket`, `deleteTempPdf`, `getMyTickets`, `getMasterData` |
 | `IT` + `Admin` | `getTickets`, `acceptTicket`, `updateTicketStatus`, `getKnowledgeBase`, `addKnowledgeArticle`, `updateKnowledgeArticle`, `deleteKnowledgeArticle`, `getMyProfile` |
-| `Admin` | `getUsers`, `updateUserRole`, `addMasterItem`, `updateMasterItem`, `deleteMasterItem` |
+| `Admin` | `deleteTicket`, `getUsers`, `updateUserRole`, `addMasterItem`, `updateMasterItem`, `deleteMasterItem` |
 
-**ข้อมูลหลัก (Master Data)** — ชื่อตารางไม่ตรงความหมาย ห้ามเปลี่ยนชื่อ (FK ผูกทั่วระบบ):
-`BRANCH` = พื้นที่ (8) → `TICKET.Branch_ID` · `DEPARTMENT` = สาขา (16, มี `Branch_ID`) → `TICKET.Dept_ID`, `USER.Dept_ID` ·
-`ISSUE_CATEGORY` = หมวดหมู่ · "ส่วน" 5 ตัวเลือกไม่มีตาราง อยู่ใน `index.html` อย่างเดียว
-`*MasterItem` รับแค่ key `branch`/`dept`/`category` — ชื่อตาราง/คอลัมน์มาจาก `MASTER_TABLES` ฝั่ง server
+- `deleteTempPdf` เปิดให้ทุกคน จึงลบได้เฉพาะไฟล์ในโฟลเดอร์ PDF ของระบบ **ที่ยังไม่มีตั๋วใบไหนอ้างถึง**
+  (กันใช้ลบบันทึกข้อความฉบับจริงของคนอื่น)
+- `deleteTicket` = **ยกเลิกงาน (soft delete)** ตั้ง `Deleted_At`/`Deleted_By` — แถวและ PDF ยังอยู่
+  งานที่ยกเลิกหายจากบอร์ด/แดชบอร์ด/ยอดในหน้าผู้ใช้ แต่หน้าประวัติของผู้แจ้งยังเห็นเป็น "ยกเลิกแล้ว"
+  · รับงาน/เปลี่ยนสถานะ/เพิ่มวิธีแก้ ใช้กับงานที่ยกเลิกไม่ได้ (`"Deleted_At" IS NULL` ทุก UPDATE)
+
+**ข้อมูลหลัก (Master Data)** — เปลี่ยนชื่อตารางให้ตรงความหมายแล้วเมื่อ 2026-10-09:
+`EXCISE_OFFICE` = พื้นที่ (ภาค 9 + 7 จังหวัด) → `TICKET.Office_ID` · `BRANCH` = สาขา (มี `Office_ID`) → `TICKET.Branch_ID`, `USER.Branch_ID` ·
+`DEPARTMENT` = ส่วน (ชุดเดียวใช้ทุกสาขา) → `TICKET.Dept_ID`, `USER.Dept_ID` · `ISSUE_CATEGORY` = หมวดหมู่
+· ตัวเลือกที่เขียนไว้ใน `index.html` = ค่าสำรองตอนโหลดจาก DB ไม่ได้
+· ฝั่ง JS/JSON ใช้ชื่อตามตาราง: `office` / `branch` / `department` (และ `officeId`, `branchId`, `departmentId`)
+`*MasterItem` รับแค่ key `office`/`branch`/`department`/`category` — ชื่อตาราง/คอลัมน์มาจาก `MASTER_TABLES` ฝั่ง server
 ลบได้เฉพาะแถวที่ไม่มีใครอ้างถึง (นับจาก `refs`)
+
+**ผังหน่วยงาน (2026-10-10)** ภาค 9 → 7 พื้นที่ → สาขา
+- `EXCISE_OFFICE.Parent_Office_ID` → ภาค 9 (ภาค 9 เอง = NULL) · **รองรับ 2 ชั้นเท่านั้น** — `checkOrgRules_` บังคับ
+  (แม่ต้องเป็นระดับบนสุด, หน่วยงานที่มีลูกจะไปสังกัดใครไม่ได้)
+- `BRANCH.Branch_Name` **เก็บชื่อเต็ม** ต้อง = ชื่อพื้นที่ (ตัวสำนักงานพื้นที่เอง ไม่ใช่สาขา) หรือขึ้นต้นด้วย
+  "ชื่อพื้นที่ " — backend บังคับตอนเพิ่ม/แก้ · **เปลี่ยนชื่อพื้นที่ = เปลี่ยนคำนำหน้าชื่อสาขาในพื้นที่นั้นให้เอง**
+  (`renameBranchPrefix_` ใน transaction เดียวกัน) · PDF ใช้ชื่อสาขาตรงๆ ไม่ต้องประกอบ
+- ลำดับตามผัง: `ftSortOffices` / `ftSortBranches` (`common.js`) เทียบ **รหัสตัวอักษร ไม่ใช่ `localeCompare`**
+  ("สาขาเมือง..." จึงอยู่ท้ายกลุ่มเหมือนผังของหน่วยงาน · ตัวสำนักงานพื้นที่ขึ้นก่อนเพราะชื่อเป็นคำนำหน้า)
+  ใช้ทั้ง dropdown ฟอร์มแจ้งซ่อมและเมนูข้อมูลหลัก · บนการ์ด/ตารางใช้ `ftShortOrg` ตัด "สำนักงานสรรพสามิต" ออก
+- รูปข้อมูลเปลี่ยนจาก SQL โดยตรง → ต้องเพิ่มเลขแคชเอง: `MASTER_CACHE_KEY` / `READ_CACHE_PREFIX` (GAS) และ
+  `MASTER_CACHE_KEY` ใน `index.html` — ไม่งั้นชื่อแบบเก่าค้างในแคชได้ถึง 6 ชม.
+
+> ⚠️ **ชื่อเดิมถูกใช้ซ้ำในความหมายใหม่** — ก่อน 2026-10-09: `BRANCH` = พื้นที่, `DEPARTMENT`/`Dept_ID` = สาขา
+> ตอนนี้: `BRANCH` = สาขา, `DEPARTMENT`/`Dept_ID` = ส่วน · อ่านโค้ด/SQL/เอกสารเก่าต้องดูวันที่ก่อนเสมอ
+> (เล่มรายงาน Project I ออกแบบ `DEPARTMENT` = ส่วน ไว้ตั้งแต่แรก — ชุดนี้จึงตรงกับเล่ม)
+
+> ⚠️ **ชื่อ `branch` เปลี่ยนความหมาย** (เดิม = พื้นที่ ตอนนี้ = สาขา) จึงมี `API_VERSION` (`Entities.gs`)
+> คู่กับ `FT_API_VERSION` (`common.js`) — คำสั่งเขียนข้อมูลหลักที่ไม่ส่ง `apiVersion: 2` ถูกปฏิเสธ
+> (หน้าเว็บรุ่นเก่าที่ค้างในเครื่องจะได้ไม่ลบ/แก้ผิดตาราง) · `createTicket` รุ่นเก่าแปลงชื่อ field ให้
+> · แคชในเครื่องเปลี่ยน key เป็น `_v2` ทั้งหมด (`ft_master_v2`, `ft_tickets_v2`, `ft_staff_profile_v2`)
+> **ถ้าเปลี่ยนความหมายของ field อีก ต้องเพิ่มเลขเวอร์ชันทั้งสองฝั่ง**
 
 **fail-closed**: DB ล่ม / ไม่มีบัญชีใน `USER` → `getUserRole_` คืน `null` → ปฏิเสธ
 
@@ -134,9 +198,17 @@ GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/jso
 - `USER.Role` มี CHECK `USER_Role_check` รับได้แค่ `'Staff'` / `'IT'` / `'Admin'`
   — **ตรงตามตัวพิมพ์** ฝั่ง frontend ส่ง lowercase แล้ว backend map ผ่าน `ROLE_DB_VALUE`
 - `TICKET.IT_In_Charge` → FK ไป `USER.LINE_User_ID`
-- `TICKET.Dept_ID` (สาขาที่แจ้ง) → FK ไป `DEPARTMENT` ว่างได้ (ตั๋วเก่า) · **ห้ามอ่านสาขาของตั๋วจาก
-  `USER.Dept_ID`** — ค่านั้นถูกเขียนทับทุกครั้งที่คนนั้นแจ้งใหม่ · `createTicket` ตั้ง `Branch_ID`
+- `TICKET.Branch_ID` (สาขาที่แจ้ง) → FK ไป `BRANCH` ว่างได้ (ตั๋วเก่า) · **ห้ามอ่านสาขาของตั๋วจาก
+  `USER.Branch_ID`** — ค่านั้นถูกเขียนทับทุกครั้งที่คนนั้นแจ้งใหม่ · `createTicket` ตั้ง `Office_ID`
   จากสาขาฝั่ง server ให้ตรงกันเสมอ
+- `TICKET.Dept_ID` / `USER.Dept_ID` (ส่วน) → FK ไป `DEPARTMENT` ว่างได้ (ข้อมูลก่อน 2026-10-06 ไม่เคยเก็บส่วน)
+  · หลักเดียวกับสาขา: ส่วนของตั๋วอ่านจาก `TICKET` ไม่ใช่ `USER` · id ส่วนผ่าน `SELECT` จาก `DEPARTMENT`
+  ก่อน id ที่ไม่มีจริงจึงเป็น NULL แทน FK error
+- `createTicket` เขียน `USER` + `TICKET` ใน transaction เดียว (`withTx_`) — พังกลางทางย้อนกลับทั้งคู่
+- `TICKET.Deleted_At` / `Deleted_By` (FK → `USER`) = ยกเลิกงาน · กู้คืน: ตั้งทั้งสองคอลัมน์เป็น `NULL`
+- PDF: ฟอร์มส่ง `section` (= ชื่อส่วน) แยกมาให้ `Template.html` ใช้ตัดบรรทัด "ส่วนราชการ" — ชื่อส่วนไม่ต้องขึ้นต้นด้วย "ส่วน"
+  · ใน payload ของ PDF `department` = **ข้อความส่วนราชการเต็ม** (พื้นที่ + สาขา + ส่วน) ไม่ใช่ตาราง DEPARTMENT
+  ชื่อนี้เป็นตัวแปรของแม่แบบบันทึกข้อความ ห้ามเปลี่ยนตามชื่อตาราง
 - การเปลี่ยน schema ทุกครั้งเก็บเป็นไฟล์ใน `sql/` (ชื่อขึ้นต้นด้วยวันที่) และต้องรัน SQL **ก่อน**
   deploy GAS ที่อ้างคอลัมน์ใหม่
 - `NOT NULL` แล้ว: `TICKET.Status/Created_Date/Category_ID`, `USER.Role` · RLS เปิดทุกตาราง ไม่มี policy
@@ -144,7 +216,9 @@ GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/jso
 - `KNOWLEDGE_BASE.Created_By` → FK ไป `USER.LINE_User_ID`
   (คนที่ยังไม่มีแถวใน `USER` เขียนบทความไม่ได้)
 - `TICKET.Status`: `1` = รอรับเรื่อง (Open) · `2` = กำลังดำเนินการ · `3` = เสร็จสิ้น
-  ค่านี้ผูกกับ `TICKET_STATUS` ใน `AdminApi.gs` และคอลัมน์บอร์ดใน `admin.js`
+  ค่านี้ผูกกับ `TICKET_STATUS` ใน `Entities.gs` และคอลัมน์บอร์ดใน `admin.js`
+- ไฟล์ `sql/` ก่อน `2026-10-09-rename-org-tables.sql` ใช้ชื่อตารางเดิม (`DEPARTMENT`, `Dept_ID`) —
+  เป็นประวัติที่รันไปแล้ว ห้ามรันซ้ำหลังเปลี่ยนชื่อ
 
 `withConn_()` เปิด/ปิด connection ให้เอง — ตามสเปก JDBC ปิด `Connection` = ปิด
 `Statement`/`ResultSet` ทั้งหมดที่เปิดจากมัน จึงไม่ต้องปิดรายตัว
@@ -234,7 +308,7 @@ SVG `preserveAspectRatio` แบบ meet จะย่อ **ทั้งภาพ
 | แก้ที่ | ไปที่ | วิธี |
 |---|---|---|
 | `DEMO/` | Cloudflare Worker `fast-ticket-app` | ลากทั้งโฟลเดอร์อัปบน dashboard (ต้องครบ 9 ไฟล์ รวม `theme.js`) |
-| `gas/` | Google Apps Script | ก๊อปวางในตัว editor → **Deploy → New version** (กด Save เฉยๆ ไม่พอ) |
+| `gas/` | Google Apps Script | ก๊อปวางในตัว editor ทุกไฟล์ (ยกเว้น `Code.gs`) → **Deploy → New version** (กด Save เฉยๆ ไม่พอ) |
 
 - Live: <https://fast-ticket-app.darkness7256.workers.dev/>
 - config ของ Worker อยู่ **นอก repo** ทั้งหมด — ไม่มี `wrangler.toml`

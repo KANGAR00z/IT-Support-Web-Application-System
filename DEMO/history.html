@@ -8,6 +8,10 @@
   <script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="theme.js"></script>
+  <!-- เปิดการเชื่อมต่อไป GAS ล่วงหน้าระหว่างรอ LIFF init (คำขอแรกเร็วขึ้น) · crossorigin: fetch ไม่ส่ง cookie
+       ต้องใช้ connection แบบ anonymous ไม่งั้น preconnect เปล่าประโยชน์ -->
+  <link rel="preconnect" href="https://script.google.com" crossorigin>
+  <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
 
   <script src="config.js"></script>
@@ -23,6 +27,7 @@
     .status-open { background: #fef3c7; color: #92400e; }
     .status-prog { background: #dbeafe; color: #1e40af; }
     .status-done { background: #d1fae5; color: #065f46; }
+    .status-cancel { background: #f1f5f9; color: #64748b; text-decoration: line-through; }
   </style>
 </head>
 <body class="flex flex-col h-[100dvh] overflow-hidden">
@@ -73,6 +78,11 @@
   <div id="content" class="hidden flex-1 overflow-y-auto">
     <div class="app-w px-3 py-4 space-y-2.5">
 
+      <!-- กำลังอัปเดต / อัปเดตไม่สำเร็จ ขณะโชว์ข้อมูลที่จำไว้ในเครื่อง — กดเพื่อลองใหม่ -->
+      <button id="staleBar" type="button" class="hidden w-full text-left text-xs rounded-lg px-3 py-2 flex items-center gap-2 border">
+        <span id="staleIcon" class="shrink-0"></span><span id="staleText" class="min-w-0"></span>
+      </button>
+
       <div class="grid grid-cols-3 gap-2">
         <div class="bg-white rounded-xl p-3 text-center border border-slate-100">
           <div class="text-xs text-amber-600 font-medium">รอรับเรื่อง</div>
@@ -119,6 +129,8 @@
       2: { text: 'กำลังดำเนินการ', cls: 'status-prog' },
       3: { text: 'เสร็จสิ้น', cls: 'status-done' }
     };
+    // Admin ยกเลิกงาน (soft delete) — แสดงไว้ ไม่ให้งานของผู้แจ้งหายเงียบๆ
+    const CANCELLED_LABEL = { text: 'ยกเลิกแล้ว', cls: 'status-cancel' };
 
     const catColor = (c) => ({
       'ฮาร์ดแวร์':'bg-red-100 text-red-700',
@@ -139,27 +151,81 @@
       $('retryBtn').innerText = msg === FT_AUTH_EXPIRED_MSG ? 'เข้าสู่ระบบใหม่' : 'ลองใหม่';
     }
 
-    async function loadTickets() {
-      $('loading').classList.remove('hidden');
-      $('content').classList.add('hidden');
+    /* ---------- แคชในเครื่อง (stale-while-revalidate) ----------
+       GAS ตอบช้าคงที่ ~1.5-3 วิ ต่อครั้ง (ก่อนแตะ DB ด้วยซ้ำ) -> เปิดหน้าแล้วจอว่างทุกครั้ง
+       จึงโชว์ผลครั้งก่อนทันที แล้วดึงของใหม่มาทับเบื้องหลัง พร้อมบอกชัดว่ากำลังอัปเดต
+       ผูกกับ LINE userId — เครื่องที่ใช้ร่วมกันจะไม่เห็นประวัติของคนอื่น */
+    const MY_CACHE_KEY = 'ft_my_tickets_v2';
+    let ownerId = '';
+    let loadingNow = false;
+
+    function readMyCache() {
+      try {
+        const o = JSON.parse(localStorage.getItem(MY_CACHE_KEY) || 'null');
+        return (o && ownerId && o.owner === ownerId && Array.isArray(o.tickets)) ? o : null;
+      } catch (e) { return null; }
+    }
+    function writeMyCache(list) {
+      try { localStorage.setItem(MY_CACHE_KEY, JSON.stringify({ owner: ownerId, savedAt: Date.now(), tickets: list })); } catch (e) {}
+    }
+    function showContent() {
+      $('loading').classList.add('hidden');
       $('errorBox').classList.add('hidden');
+      $('content').classList.remove('hidden');
+    }
+    // kind: 'sync' = กำลังอัปเดต · 'fail' = อัปเดตไม่สำเร็จ (กดลองใหม่ได้) · null = ซ่อน
+    function setStale(kind, text) {
+      const bar = $('staleBar');
+      bar.classList.toggle('hidden', !kind);
+      if (!kind) return;
+      bar.className = 'w-full text-left text-xs rounded-lg px-3 py-2 flex items-center gap-2 border ' +
+        (kind === 'fail' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-brand-50 border-brand-100 text-brand-700');
+      $('staleIcon').innerHTML = icon(kind === 'fail' ? 'triangle-alert' : 'refresh-cw',
+        'w-3.5 h-3.5' + (kind === 'sync' ? ' animate-spin' : ''));
+      $('staleText').innerText = text;
+    }
+
+    async function loadTickets() {
+      if (loadingNow) return;   // กดรีเฟรชรัวๆ ไม่ยิงซ้อน
+      loadingNow = true;
+      $('refreshBtn').classList.add('animate-spin');
+      const cached = readMyCache();
+      if (cached) {
+        myTickets = cached.tickets;
+        renderTickets();
+        showContent();
+        setStale('sync', 'กำลังอัปเดต… ที่เห็นอยู่คือข้อมูลเมื่อ ' + timeAgo(new Date(cached.savedAt).toISOString()));
+      } else if ($('content').classList.contains('hidden')) {
+        $('loading').classList.remove('hidden');
+        $('errorBox').classList.add('hidden');
+      }
       try {
         const res = await callBackend('getMyTickets', {});
         if (!res || res.status !== 'success') throw new Error((res && res.message) || 'โหลดไม่สำเร็จ');
         // DB เก็บ "ฮาร์ดแวร์ (Hardware)" — ตัดส่วนท้ายให้ตรงคีย์สีของ catColor เหมือน admin.js
         myTickets = (res.tickets || []).map(t => ({ ...t, category: cleanCategory(t.category || '') }));
+        writeMyCache(myTickets);
         renderTickets();
-        $('loading').classList.add('hidden');
-        $('content').classList.remove('hidden');
+        showContent();
+        setStale(null);
       } catch (e) {
-        showError(e.message);
+        // มีของเก่าให้ดูอยู่แล้ว -> ไม่ล้างจอเป็นหน้า error แค่บอกว่ายังไม่อัปเดต (ยกเว้น login หมดอายุ ต้องให้เห็นปุ่ม)
+        if (cached && e.message !== FT_AUTH_EXPIRED_MSG) {
+          setStale('fail', 'อัปเดตไม่สำเร็จ: ' + e.message + ' · แตะเพื่อลองใหม่');
+        } else {
+          showError(e.message);
+        }
+      } finally {
+        loadingNow = false;
+        $('refreshBtn').classList.remove('animate-spin');
       }
     }
 
     function renderTickets() {
-      const open = myTickets.filter(t => t.status === STATUS.OPEN).length;
-      const prog = myTickets.filter(t => t.status === STATUS.IN_PROGRESS).length;
-      const done = myTickets.filter(t => t.status === STATUS.CLOSED).length;
+      const live = myTickets.filter(t => !t.cancelled);   // งานที่ถูกยกเลิกไม่นับในตัวเลขสรุป
+      const open = live.filter(t => t.status === STATUS.OPEN).length;
+      const prog = live.filter(t => t.status === STATUS.IN_PROGRESS).length;
+      const done = live.filter(t => t.status === STATUS.CLOSED).length;
       $('kpiOpen').innerText = open;
       $('kpiProg').innerText = prog;
       $('kpiDone').innerText = done;
@@ -169,7 +235,7 @@
       $('emptyState').classList.toggle('hidden', myTickets.length > 0);
 
       myTickets.forEach(t => {
-        const st = STATUS_LABEL[t.status] || STATUS_LABEL[1];
+        const st = t.cancelled ? CANCELLED_LABEL : (STATUS_LABEL[t.status] || STATUS_LABEL[1]);
         const isExpanded = expandedId === t.id;
 
         const el = document.createElement('div');
@@ -179,8 +245,9 @@
         if (isExpanded) {
           detailHtml = `
             <div class="px-4 pb-3.5 space-y-2 border-t border-slate-100 pt-3">
-              ${t.dept ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">สาขา:</span><span class="text-slate-600">${escapeHtml(t.dept)}</span></div>` : ''}
-              ${t.branch ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">พื้นที่:</span><span class="text-slate-600">${escapeHtml(t.branch)}</span></div>` : ''}
+              ${t.department ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">ส่วน:</span><span class="text-slate-600">${escapeHtml(t.department)}</span></div>` : ''}
+              ${t.branch ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">สังกัด:</span><span class="text-slate-600">${escapeHtml(t.branch)}</span></div>` : ''}
+              ${t.office && !t.branch ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">พื้นที่:</span><span class="text-slate-600">${escapeHtml(t.office)}</span></div>` : ''}
               ${t.assignee ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">ผู้รับผิดชอบ:</span><span class="text-slate-600">${escapeHtml(t.assignee)}</span></div>` : ''}
               ${t.acceptedAt ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">รับเรื่องเมื่อ:</span><span class="text-slate-600">${timeAgo(t.acceptedAt)}</span></div>` : ''}
               ${t.closedAt ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">ปิดงานเมื่อ:</span><span class="text-slate-600">${timeAgo(t.closedAt)}</span></div>` : ''}
@@ -237,6 +304,7 @@
     $('pdfClose').addEventListener('click', closePdf);
     $('pdfModal').addEventListener('click', (e) => { if (e.target === $('pdfModal')) closePdf(); });
     $('refreshBtn').addEventListener('click', loadTickets);
+    $('staleBar').addEventListener('click', loadTickets);
     $('retryBtn').addEventListener('click', () => {
       if ($('errorMsg').innerText === FT_AUTH_EXPIRED_MSG) ftRelogin(true);
       else loadTickets();
@@ -268,10 +336,14 @@
           return;
         }
 
+        const tok = liff.getDecodedIDToken() || {};
+        ownerId = tok.sub || '';
+        // เริ่มโหลดประวัติทันที ไม่ต้องรอ getProfile (คนละ request กัน รอต่อกันเสียเวลาเปล่า)
+        const ticketsP = loadTickets();
+
         // getProfile ต้องมี scope "profile" — ถ้าไม่มี ใช้ชื่อจาก ID Token แทน ไม่ให้ทั้งหน้าพัง
         let profile = null;
         try { profile = await liff.getProfile(); } catch (e) { console.warn('getProfile:', e.message); }
-        const tok = liff.getDecodedIDToken() || {};
         const name = (profile && profile.displayName) || tok.name || 'ผู้ใช้ LINE';
         const pic = (profile && profile.pictureUrl) || tok.picture || '';
         $('userName').innerText = name;
@@ -281,7 +353,7 @@
           $('userAvatar').innerText = name.charAt(0);
         }
 
-        await loadTickets();
+        await ticketsP;
       } catch (e) {
         showError('เชื่อมต่อ LINE ไม่สำเร็จ: ' + e.message);
       }
