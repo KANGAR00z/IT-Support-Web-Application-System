@@ -14,8 +14,18 @@
    --------------------------------------------------------------------------- */
 
 // LEFT JOIN กันตั๋วหายถ้า master data ขาด · JOIN "USER" 2 ครั้ง: ผู้แจ้ง (u) + ผู้รับงาน (it)
+const TICKET_FROM_SQL_ = `
+    FROM "TICKET" t
+    LEFT JOIN "ISSUE_CATEGORY" c  ON c."Category_ID"   = t."Category_ID"
+    LEFT JOIN "EXCISE_OFFICE"  o  ON o."Office_ID"     = t."Office_ID"
+    LEFT JOIN "BRANCH"         b  ON b."Branch_ID"     = t."Branch_ID"
+    LEFT JOIN "DEPARTMENT"     d  ON d."Dept_ID"       = t."Dept_ID"
+    LEFT JOIN "USER"           u  ON u."LINE_User_ID"  = t."LINE_User_ID"
+    LEFT JOIN "USER"           it ON it."LINE_User_ID" = t."IT_In_Charge"`;
+
 // withResolution: แนบวิธีแก้ล่าสุด (ตั๋วที่ปิด-เปิด-ปิดซ้ำมี KB หลายแถว เอาอันล่าสุดอันเดียว)
-function ticketSelectSql_(withResolution) {
+// extraCol: คอลัมน์เพิ่ม (เช่นลำดับในคอลัมน์บอร์ด) — ข้อความ SQL จากไฟล์นี้เท่านั้น
+function ticketSelectSql_(withResolution, extraCol) {
   return `
     SELECT
       t."Ticket_ID", t."Issue_Detail", t."Status", t."IT_In_Charge", t."Doc_PDF_URL",
@@ -26,14 +36,9 @@ function ticketSelectSql_(withResolution) {
       (withResolution ? `,
       (SELECT kb."Resolution_Text" FROM "KNOWLEDGE_BASE" kb
         WHERE kb."Ticket_ID" = t."Ticket_ID"
-        ORDER BY kb."Created_Date" DESC LIMIT 1) AS "Resolution_Text"` : '') + `
-    FROM "TICKET" t
-    LEFT JOIN "ISSUE_CATEGORY" c  ON c."Category_ID"   = t."Category_ID"
-    LEFT JOIN "EXCISE_OFFICE"  o  ON o."Office_ID"     = t."Office_ID"
-    LEFT JOIN "BRANCH"         b  ON b."Branch_ID"     = t."Branch_ID"
-    LEFT JOIN "DEPARTMENT"     d  ON d."Dept_ID"       = t."Dept_ID"
-    LEFT JOIN "USER"           u  ON u."LINE_User_ID"  = t."LINE_User_ID"
-    LEFT JOIN "USER"           it ON it."LINE_User_ID" = t."IT_In_Charge"`;
+        ORDER BY kb."Created_Date" DESC LIMIT 1) AS "Resolution_Text"` : '') +
+      (extraCol ? `,
+      ` + extraCol : '') + TICKET_FROM_SQL_;
 }
 
 function mapTicket_(rs, withResolution) {
@@ -64,13 +69,120 @@ function mapTicket_(rs, withResolution) {
   return t;
 }
 
-// ตั๋วทั้งหมดที่ยังไม่ถูกยกเลิก (บอร์ด / แดชบอร์ด)
-function findActiveTickets_(conn) {
-  const rs = conn.prepareStatement(ticketSelectSql_(false) +
-    ' WHERE t."Deleted_At" IS NULL ORDER BY t."Ticket_ID" DESC').executeQuery();
+/* ---------- บอร์ด (Kanban) — แบ่งหน้าแยกแต่ละคอลัมน์ ---------- */
+
+// ข้อความที่ค้นได้ของตั๋ว (รหัส/อาการ/ผู้แจ้ง/ผู้รับงาน/หน่วยงาน/หมวดหมู่) — concat_ws ข้าม NULL ให้เอง
+const TICKET_SEARCH_SQL_ = `concat_ws(' ', 'TK-' || t."Ticket_ID", t."Issue_Detail", u."Full_Name", it."Full_Name",
+      b."Branch_Name", d."Dept_Name", o."Office_Name", o."Province", c."Category_Name")`;
+
+// ตัวกรองของบอร์ด -> { sql, params } · f มาจาก boardFilter_ (UseCases) ที่ตรวจค่าแล้ว
+// ไม่รวม "ยังไม่ถูกยกเลิก" — ผู้เรียกใส่เอง เพราะยอดก่อนกรองต้องนับแยก
+function boardWhere_(f) {
+  const w = [];
+  const p = [];
+  if (f.categoryId) { w.push('t."Category_ID" = ?'); p.push(['i', f.categoryId]); }
+  if (f.province)   { w.push(`strpos(COALESCE(o."Province", ''), ?) > 0`); p.push(['s', f.province]); }
+  if (f.assignee)   { w.push('t."IT_In_Charge" = ?'); p.push(['s', f.assignee]); }
+  // ช่วงเวลามีผลกับงานที่เสร็จแล้วเท่านั้น — งานที่ยังไม่เสร็จต้องเห็นเสมอ ไม่ว่าแจ้งมานานแค่ไหน
+  if (f.closedDays) {
+    w.push('(t."Status" <> ' + TICKET_STATUS.CLOSED +
+      ' OR t."Closed_Date" IS NULL OR t."Closed_Date" >= NOW() - make_interval(days => ?))');
+    p.push(['i', f.closedDays]);
+  }
+  if (f.q) { w.push(TICKET_SEARCH_SQL_ + ' ILIKE ?'); p.push(['s', f.q]); }
+  return { sql: w.length ? w.join(' AND ') : 'TRUE', params: p };
+}
+
+// { [status]: { n: ยอดที่ตรงตัวกรอง, all: ยอดทั้งคอลัมน์ } } — หัวคอลัมน์แสดง "n/all" ตอนกรองอยู่
+function countBoardTickets_(conn, f) {
+  const w = boardWhere_(f);
+  const stmt = conn.prepareStatement(
+    'SELECT t."Status" AS s, COUNT(*) AS all_n, COUNT(*) FILTER (WHERE ' + w.sql + ') AS n' +
+    TICKET_FROM_SQL_ + ' WHERE t."Deleted_At" IS NULL GROUP BY t."Status"');
+  bindParams_(stmt, w.params);
+  const rs = stmt.executeQuery();
+  const out = {};
+  while (rs.next()) out[rs.getInt('s')] = { n: rs.getInt('n'), all: rs.getInt('all_n') };
+  return out;
+}
+
+// การ์ดหน้าที่ขอของทุกคอลัมน์ใน query เดียว — cols = [{ status, page }]
+// ลำดับในคอลัมน์ = เวลาที่ตรงกับสถานะนั้น (เสร็จสิ้นเรียงตามเวลาปิด ไม่ใช่เวลาแจ้ง) · id ต่อท้ายให้ลำดับนิ่ง
+function findBoardPage_(conn, f, size, cols) {
+  const w = boardWhere_(f);
+  const dir = f.desc ? 'DESC' : 'ASC';
+  const key = 'CASE t."Status"' +
+    ' WHEN ' + TICKET_STATUS.CLOSED + ' THEN COALESCE(t."Closed_Date", t."Created_Date")' +
+    ' WHEN ' + TICKET_STATUS.IN_PROGRESS + ' THEN COALESCE(t."Accepted_Date", t."Created_Date")' +
+    ' ELSE t."Created_Date" END';
+  const rn = 'ROW_NUMBER() OVER (PARTITION BY t."Status" ORDER BY ' + key + ' ' + dir + ', t."Ticket_ID" ' + dir + ') AS rn';
+  const stmt = conn.prepareStatement(
+    'SELECT * FROM (' + ticketSelectSql_(false, rn) + ' WHERE t."Deleted_At" IS NULL AND ' + w.sql + ') x WHERE ' +
+    cols.map(function () { return '(x."Status" = ? AND x.rn > ? AND x.rn <= ?)'; }).join(' OR ') +
+    ' ORDER BY x."Status", x.rn');
+  let i = bindParams_(stmt, w.params);
+  cols.forEach(function (c) {
+    stmt.setInt(i++, c.status);
+    stmt.setInt(i++, (c.page - 1) * size);
+    stmt.setInt(i++, c.page * size);
+  });
+  const rs = stmt.executeQuery();
   const list = [];
   while (rs.next()) list.push(mapTicket_(rs, false));
   return list;
+}
+
+// แดชบอร์ดทั้งหน้าใน query เดียว (Postgres ประกอบ JSON ให้) — ไม่ต้องส่งตั๋วทุกใบไปคำนวณที่หน้าเว็บ
+// และไป-กลับ DB รอบเดียว (GAS -> โตเกียว ~0.1-0.3 วิต่อรอบ) · ไม่นับงานที่ถูกยกเลิก
+// เวลาเฉลี่ยเป็นมิลลิวินาที · trend = ยอดแจ้งรายวันตามเวลาไทย 32 วันล่าสุด (หน้าเว็บตัดเหลือ 30 วันเอง)
+// oldest.createdAt ใช้ to_char เป็น ISO แบบ UTC — Safari parse รูปแบบดิบของ Postgres ไม่ได้ (ดู toIsoLocal_)
+function readDashboard_(conn, agingDays) {
+  const stmt = conn.prepareStatement(`
+    WITH a AS (SELECT * FROM "TICKET" WHERE "Deleted_At" IS NULL)
+    SELECT json_build_object(
+      'kpi', (SELECT json_build_object(
+          'total', COUNT(*),
+          'open',  COUNT(*) FILTER (WHERE "Status" = ${TICKET_STATUS.OPEN}),
+          'prog',  COUNT(*) FILTER (WHERE "Status" = ${TICKET_STATUS.IN_PROGRESS}),
+          'done',  COUNT(*) FILTER (WHERE "Status" = ${TICKET_STATUS.CLOSED}),
+          'acceptAvgMs', AVG(EXTRACT(EPOCH FROM ("Accepted_Date" - "Created_Date")) * 1000),
+          'acceptN',     COUNT("Accepted_Date"),
+          'closeAvgMs',  AVG(EXTRACT(EPOCH FROM ("Closed_Date" - "Created_Date")) * 1000),
+          'closeN',      COUNT("Closed_Date"),
+          'aging', COUNT(*) FILTER (WHERE "Status" = ${TICKET_STATUS.OPEN}
+                                    AND "Created_Date" < NOW() - make_interval(days => ?)))
+        FROM a),
+      'categories', (SELECT COALESCE(json_agg(json_build_object('name', x.name, 'n', x.n)), '[]'::json) FROM (
+          SELECT c."Category_Name" AS name, COUNT(*) AS n FROM a
+          LEFT JOIN "ISSUE_CATEGORY" c ON c."Category_ID" = a."Category_ID"
+          GROUP BY 1) x),
+      'provinces', (SELECT COALESCE(json_agg(json_build_object('province', x.province, 'office', x.office, 'n', x.n)), '[]'::json) FROM (
+          SELECT o."Province" AS province, o."Office_Name" AS office, COUNT(*) AS n FROM a
+          LEFT JOIN "EXCISE_OFFICE" o ON o."Office_ID" = a."Office_ID"
+          GROUP BY 1, 2) x),
+      'staff', (SELECT COALESCE(json_agg(json_build_object('name', x.name, 'n', x.n)), '[]'::json) FROM (
+          SELECT COALESCE(it."Full_Name", a."IT_In_Charge") AS name, COUNT(*) AS n FROM a
+          LEFT JOIN "USER" it ON it."LINE_User_ID" = a."IT_In_Charge"
+          WHERE a."IT_In_Charge" IS NOT NULL
+          GROUP BY 1) x),
+      'oldest', (SELECT COALESCE(json_agg(json_build_object('id', x."Ticket_ID", 'detail', x."Issue_Detail",
+            'province', x."Province", 'office', x."Office_Name",
+            'createdAt', to_char(x."Created_Date" AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"'))
+            ORDER BY x."Created_Date"), '[]'::json) FROM (
+          SELECT a."Ticket_ID", a."Issue_Detail", a."Created_Date", o."Province", o."Office_Name" FROM a
+          LEFT JOIN "EXCISE_OFFICE" o ON o."Office_ID" = a."Office_ID"
+          WHERE a."Status" = ${TICKET_STATUS.OPEN}
+          ORDER BY a."Created_Date" LIMIT 6) x),
+      'trend', (SELECT COALESCE(json_agg(json_build_object('d', x.d, 'n', x.n)), '[]'::json) FROM (
+          SELECT to_char(("Created_Date" AT TIME ZONE 'Asia/Bangkok')::date, 'YYYY-MM-DD') AS d, COUNT(*) AS n FROM a
+          WHERE "Created_Date" >= NOW() - INTERVAL '32 days'
+          GROUP BY 1) x)
+    )::text AS j
+  `);
+  stmt.setInt(1, agingDays);
+  const rs = stmt.executeQuery();
+  rs.next();
+  return JSON.parse(rs.getString('j'));
 }
 
 // ตั๋วของผู้แจ้งคนหนึ่ง รวมที่ถูกยกเลิก (หน้าประวัติแสดงว่า "ยกเลิกแล้ว" ไม่ให้หายเงียบ)
@@ -219,25 +331,67 @@ function updateUserRoleRow_(conn, userId, dbRole) {
   return stmt.executeUpdate();
 }
 
-// JOIN TICKET สองขา (ผู้แจ้ง/ผู้รับผิดชอบ) คูณกันเป็น cartesian -> ต้อง COUNT(DISTINCT)
-// ไม่นับงานที่ถูกยกเลิก
-function findAllUsers_(conn) {
-  const rs = conn.prepareStatement(`
+const USER_FROM_SQL_ = `
+    FROM "USER" u
+    LEFT JOIN "BRANCH"        b ON b."Branch_ID" = u."Branch_ID"
+    LEFT JOIN "EXCISE_OFFICE" o ON o."Office_ID" = b."Office_ID"
+    LEFT JOIN "DEPARTMENT"    d ON d."Dept_ID"   = u."Dept_ID"`;
+
+// ตัวกรองบทบาท — client เลือกได้แค่ key ในนี้ (ข้อความ SQL เป็นค่าคงที่ ไม่ใช่ค่าจากผู้ใช้)
+// เทียบแบบ lower เหมือน roleOf() ของหน้าเว็บ
+const USER_ROLE_SQL_ = {
+  admin: `lower(u."Role") = 'admin'`,
+  it:    `lower(u."Role") = 'it'`,
+  staff: `lower(COALESCE(u."Role", '')) NOT IN ('admin', 'it')`
+};
+
+// f = { q: pattern จาก likePattern_, role: 'admin'|'it'|'staff'|'' }
+function userWhere_(f) {
+  const w = [];
+  const p = [];
+  if (f.role) w.push(USER_ROLE_SQL_[f.role]);
+  if (f.q) {
+    w.push(`concat_ws(' ', u."Full_Name", u."Position", o."Office_Name", b."Branch_Name", d."Dept_Name") ILIKE ?`);
+    p.push(['s', f.q]);
+  }
+  return { sql: w.length ? w.join(' AND ') : 'TRUE', params: p };
+}
+
+// ยอดบนการ์ด KPI (ทั้งระบบ ไม่สนตัวกรอง) + จำนวนที่ตรงตัวกรอง (ใช้แบ่งหน้า) ใน query เดียว
+function countUsers_(conn, f) {
+  const w = userWhere_(f);
+  const stmt = conn.prepareStatement(
+    'SELECT COUNT(*) AS all_n,' +
+    ' COUNT(*) FILTER (WHERE ' + USER_ROLE_SQL_.admin + ') AS admin_n,' +
+    ' COUNT(*) FILTER (WHERE ' + USER_ROLE_SQL_.it + ') AS it_n,' +
+    ' COUNT(*) FILTER (WHERE ' + w.sql + ') AS n' + USER_FROM_SQL_);
+  bindParams_(stmt, w.params);
+  const rs = stmt.executeQuery();
+  rs.next();
+  return { all: rs.getInt('all_n'), admin: rs.getInt('admin_n'), it: rs.getInt('it_n'), n: rs.getInt('n') };
+}
+
+// ยอดแจ้งซ่อม/รับผิดชอบเป็น subquery ต่อแถว — นับเฉพาะคนในหน้านี้ ไม่ JOIN ตั๋วทั้งตาราง · ไม่นับงานที่ถูกยกเลิก
+// เรียง: แอดมิน -> IT -> ทั่วไป แล้วตามชื่อ (LINE id ต่อท้ายให้ลำดับนิ่ง คนไม่สลับข้ามหน้า)
+function findUsersPage_(conn, f, size, offset) {
+  const w = userWhere_(f);
+  const stmt = conn.prepareStatement(`
     SELECT
       u."LINE_User_ID", u."Full_Name", u."Position", u."Role",
       b."Branch_Name", o."Office_Name", o."Province", d."Dept_Name",
-      COUNT(DISTINCT t."Ticket_ID")  AS "Reported",
-      COUNT(DISTINCT ta."Ticket_ID") AS "Assigned"
-    FROM "USER" u
-    LEFT JOIN "BRANCH"  b  ON b."Branch_ID"     = u."Branch_ID"
-    LEFT JOIN "EXCISE_OFFICE"  o  ON o."Office_ID"     = b."Office_ID"
-    LEFT JOIN "DEPARTMENT"     d  ON d."Dept_ID"       = u."Dept_ID"
-    LEFT JOIN "TICKET"  t  ON t."LINE_User_ID"  = u."LINE_User_ID" AND t."Deleted_At" IS NULL
-    LEFT JOIN "TICKET"  ta ON ta."IT_In_Charge" = u."LINE_User_ID" AND ta."Deleted_At" IS NULL
-    GROUP BY u."LINE_User_ID", u."Full_Name", u."Position", u."Role",
-             b."Branch_Name", o."Office_Name", o."Province", d."Dept_Name"
-    ORDER BY u."Full_Name"
-  `).executeQuery();
+      (SELECT COUNT(*) FROM "TICKET" t
+        WHERE t."LINE_User_ID" = u."LINE_User_ID" AND t."Deleted_At" IS NULL) AS "Reported",
+      (SELECT COUNT(*) FROM "TICKET" t
+        WHERE t."IT_In_Charge" = u."LINE_User_ID" AND t."Deleted_At" IS NULL) AS "Assigned"` +
+    USER_FROM_SQL_ + `
+    WHERE ` + w.sql + `
+    ORDER BY CASE lower(u."Role") WHEN 'admin' THEN 0 WHEN 'it' THEN 1 ELSE 2 END,
+             u."Full_Name", u."LINE_User_ID"
+    LIMIT ? OFFSET ?`);
+  const i = bindParams_(stmt, w.params);
+  stmt.setInt(i, size);
+  stmt.setInt(i + 1, offset);
+  const rs = stmt.executeQuery();
   const list = [];
   while (rs.next()) {
     list.push({
@@ -284,18 +438,61 @@ function findProfile_(conn, userId) {
    KNOWLEDGE_BASE
    --------------------------------------------------------------------------- */
 
-function findAllArticles_(conn) {
-  const rs = conn.prepareStatement(`
-    SELECT
-      kb."KB_ID", kb."Ticket_ID", kb."Resolution_Text", kb."Created_Date", kb."Created_By",
-      c."Category_Name", t."Issue_Detail", t."Doc_PDF_URL",
-      u."Full_Name" AS "Author_Name"
+const KB_FROM_SQL_ = `
     FROM "KNOWLEDGE_BASE" kb
     LEFT JOIN "ISSUE_CATEGORY" c ON c."Category_ID"  = kb."Category_ID"
     LEFT JOIN "TICKET"         t ON t."Ticket_ID"    = kb."Ticket_ID"
-    LEFT JOIN "USER"           u ON u."LINE_User_ID" = kb."Created_By"
-    ORDER BY kb."Created_Date" DESC
-  `).executeQuery();
+    LEFT JOIN "USER"           u ON u."LINE_User_ID" = kb."Created_By"`;
+
+// f = { q, categoryId } · categoryId: 0 = ทุกหมวด · 'none' = ไม่มีหมวด (NULL) · ตัวเลข = หมวดนั้น
+function articleWhere_(f) {
+  const w = [];
+  const p = [];
+  if (f.categoryId === 'none') w.push('kb."Category_ID" IS NULL');
+  else if (f.categoryId) { w.push('kb."Category_ID" = ?'); p.push(['i', f.categoryId]); }
+  if (f.q) {
+    w.push(`concat_ws(' ', 'TK-' || kb."Ticket_ID", t."Issue_Detail", kb."Resolution_Text") ILIKE ?`);
+    p.push(['s', f.q]);
+  }
+  return { sql: w.length ? w.join(' AND ') : 'TRUE', params: p };
+}
+
+function countArticles_(conn, f) {
+  const w = articleWhere_(f);
+  const stmt = conn.prepareStatement('SELECT COUNT(*) AS n' + KB_FROM_SQL_ + ' WHERE ' + w.sql);
+  bindParams_(stmt, w.params);
+  const rs = stmt.executeQuery();
+  return rs.next() ? rs.getInt('n') : 0;
+}
+
+// ชิพหมวดหมู่: ยอดต่อหมวดของประวัติทั้งหมด (ไม่สนคำค้น) · id = null คือไม่มีหมวด
+function countArticlesByCategory_(conn) {
+  const rs = conn.prepareStatement(
+    'SELECT kb."Category_ID" AS id, c."Category_Name" AS name, COUNT(*) AS n' +
+    ' FROM "KNOWLEDGE_BASE" kb LEFT JOIN "ISSUE_CATEGORY" c ON c."Category_ID" = kb."Category_ID"' +
+    ' GROUP BY 1, 2 ORDER BY n DESC, 1').executeQuery();
+  const list = [];
+  while (rs.next()) {
+    list.push({ id: strOrNull_(rs, 'id') ? rs.getInt('id') : null, name: strOrNull_(rs, 'name') || '', n: rs.getInt('n') });
+  }
+  return list;
+}
+
+function findArticlesPage_(conn, f, size, offset) {
+  const w = articleWhere_(f);
+  const stmt = conn.prepareStatement(`
+    SELECT
+      kb."KB_ID", kb."Ticket_ID", kb."Resolution_Text", kb."Created_Date", kb."Created_By",
+      c."Category_Name", t."Issue_Detail", t."Doc_PDF_URL",
+      u."Full_Name" AS "Author_Name"` +
+    KB_FROM_SQL_ + `
+    WHERE ` + w.sql + `
+    ORDER BY kb."Created_Date" DESC, kb."KB_ID" DESC
+    LIMIT ? OFFSET ?`);
+  const i = bindParams_(stmt, w.params);
+  stmt.setInt(i, size);
+  stmt.setInt(i + 1, offset);
+  const rs = stmt.executeQuery();
   const list = [];
   while (rs.next()) {
     const ticketId = rs.getInt('Ticket_ID');

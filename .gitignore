@@ -17,3 +17,6 @@ Thumbs.db
 
 # Netlify local
 .netlify/
+
+# ไฟล์ส่งงานรายวิชา (มีชื่อ/รหัสนักศึกษา) — repo เป็น public จึงเก็บไว้ในเครื่องเท่านั้น
+deliverables/

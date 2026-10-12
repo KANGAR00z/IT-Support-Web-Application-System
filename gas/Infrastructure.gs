@@ -115,6 +115,23 @@ function cachedRead_(name, fn) {
   return res;
 }
 
+// ชื่อแคชของผลอ่านที่มีพารามิเตอร์ (ตัวกรอง/หน้า) — ย่อเป็น MD5 เพราะ key ของ CacheService ยาวได้ ≤250 ตัวอักษร
+function argsKey_(args) {
+  return Utilities.base64EncodeWebSafe(Utilities.computeDigest(
+    Utilities.DigestAlgorithm.MD5, JSON.stringify(args), Utilities.Charset.UTF_8));
+}
+
+// ผูกค่ากับ ? ตามลำดับ — params = [['s' | 'i', ค่า], ...] (SQL ที่ประกอบเงื่อนไขตามตัวกรอง)
+// คืนเลขลำดับของ ? ตัวถัดไป
+function bindParams_(stmt, params, start) {
+  let i = start || 1;
+  params.forEach(function (p) {
+    if (p[0] === 'i') stmt.setInt(i++, p[1]);
+    else stmt.setString(i++, p[1]);
+  });
+  return i;
+}
+
 // -----------------------------------------------------------------------------
 // แปลงเวลา Postgres timestamptz ("2026-07-13 15:50:09.111633+00") เป็น ISO 8601
 // ที่ JS parse ได้ทุกเบราว์เซอร์ (Safari/iOS เข้มกว่า Chrome — ต้องถูกสเปก)

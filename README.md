@@ -10,7 +10,7 @@
 - **Live:** <https://fast-ticket-app.darkness7256.workers.dev/>
 - **สถาปัตยกรรม / ข้อห้ามในการแก้โค้ด:** [CLAUDE.md](CLAUDE.md) ← อ่านก่อนแก้
 - **สถานะ / งานที่ค้าง:** [RESUME.md](RESUME.md)
-- **เอกสาร CRUD ของระบบ:** [FAST_TICKET_CRUD_Modules.docx](FAST_TICKET_CRUD_Modules.docx)
+- **เอกสารระบบ:** [docs/](docs/) — CRUD Modules · Data Dictionary + ER Diagram
 
 ---
 
@@ -60,14 +60,21 @@ IT-Support-Web-Application-System/
 │   ├── 2026-10-01-hotfix.sql         sequence ของ id · ชื่อสาขา · NOT NULL · index
 │   ├── 2026-10-01-ticket-dept.sql    เพิ่ม TICKET.Dept_ID (ตั๋วจำสาขาที่แจ้ง)
 │   ├── 2026-10-06-section.sql        ตาราง SECTION (ส่วน) + TICKET/USER.Section_ID
-│   └── 2026-10-09-rename-org-tables.sql  BRANCH→EXCISE_OFFICE, DEPARTMENT→BRANCH,
-│                                     SECTION→DEPARTMENT + ยกเลิกงาน (Deleted_At)
+│   ├── 2026-10-09-rename-org-tables.sql  BRANCH→EXCISE_OFFICE, DEPARTMENT→BRANCH,
+│   │                                 SECTION→DEPARTMENT + ยกเลิกงาน (Deleted_At)
 │   └── 2026-10-10-org-hierarchy.sql  ภาค 9 เป็นแม่ของพื้นที่ · ชื่อสาขาเต็ม · ตัวเลือกสำนักงานพื้นที่
-│                                     (ไฟล์ก่อนหน้านี้ใช้ชื่อตารางเดิม — รันไปแล้ว ห้ามรันซ้ำ)
+│                                     (ทุกไฟล์รันไปแล้ว · ไฟล์ก่อน 10-09 ใช้ชื่อตารางเดิม ห้ามรันซ้ำ)
+│
+├── docs/            → เอกสารระบบ (ไม่ได้ deploy)
+│   ├── FAST_TICKET_CRUD_Modules.docx        CRUD / ACL / ฐานข้อมูล
+│   ├── FAST_TICKET_Data_Dictionary_ERD.docx Data Dictionary + ER Diagram (มี .pdf คู่กัน)
+│   └── FAST_TICKET_ERD.png                  ER Diagram ความละเอียดสูง (ใช้ในเล่มรายงาน)
+│
+├── deliverables/    🔒 ไฟล์ส่งงานรายวิชา (โปสเตอร์ สไลด์ กลางภาค) — gitignore ไว้
+│                       มีชื่อ/รหัสนักศึกษา และรีโปเป็น public · ไม่ sync ข้ามเครื่องผ่าน git
 │
 ├── CLAUDE.md         สถาปัตยกรรม + ข้อห้าม (อ่านก่อนแก้โค้ด)
-├── RESUME.md         สถานะปัจจุบัน + งานค้าง + วิธีทำงานข้ามเครื่อง
-└── FAST_TICKET_CRUD_Modules.docx   เอกสาร CRUD / ACL / ฐานข้อมูล
+└── RESUME.md         สถานะปัจจุบัน + งานค้าง + วิธีทำงานข้ามเครื่อง
 ```
 
 > ⚠️ **`gas/Template.html` ไม่ใช่หน้าเว็บ** — GAS อ่านผ่าน
@@ -115,7 +122,7 @@ IT-Support-Web-Application-System/
 ## ตรวจว่า backend ยังดีอยู่ไหม
 
 ```bash
-curl -sL "$GAS_API_URL" -H "Content-Type: text/plain;charset=utf-8" --data-binary '{"action":"getTickets","data":{}}'
+curl -sL "$GAS_API_URL" -H "Content-Type: text/plain;charset=utf-8" --data-binary '{"action":"getBoard","data":{}}'
 ```
 
 ต้องได้ `{"status":"error","code":"AUTH_INVALID","message":"ยืนยันตัวตน LINE ไม่สำเร็จ..."}`

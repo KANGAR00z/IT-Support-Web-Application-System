@@ -135,6 +135,8 @@
     @media (hover: none) {
       .card-act { padding: .5rem .75rem; min-height: 40px; display: inline-flex; align-items: center; gap: .25rem; }
     }
+    /* ระหว่างรอหน้าถัดไปจาก DB: จางของเดิมไว้ให้รู้ว่ากำลังโหลด (setBusy ใน admin.js) */
+    .is-busy { opacity: .55; transition: opacity .15s; }
   </style>
 </head>
 <body class="viz-root h-[100dvh] overflow-hidden text-slate-800 flex flex-col">
@@ -225,10 +227,12 @@
         </select>
         <button id="boardMine" class="shrink-0 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium min-h-[40px] transition-colors">งานของฉัน</button>
         <button id="boardCompact" class="shrink-0 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium min-h-[40px] transition-colors">กะทัดรัด</button>
-        <select id="boardClosedDays" title="ช่วงเวลาของงานที่ปิดแล้วที่จะแสดง" class="shrink-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-h-[40px] bg-white outline-none focus:ring-2 focus:ring-brand-500">
-          <option value="7">ปิดงาน: 7 วันล่าสุด</option>
-          <option value="30">ปิดงาน: 30 วันล่าสุด</option>
-          <option value="0">ปิดงาน: ทั้งหมด</option>
+        <!-- มีผลกับคอลัมน์ "เสร็จสิ้น" เท่านั้น (งานที่ยังไม่เสร็จแสดงเสมอ) — คำว่า "ปิดงาน: ทั้งหมด"
+             อ่านแล้วเหมือนปุ่มสั่งปิดงานทุกใบ จึงใช้ "งานเสร็จ" ให้ตรงกับชื่อคอลัมน์ -->
+        <select id="boardClosedDays" title="คอลัมน์เสร็จสิ้น: แสดงเฉพาะงานที่ปิดภายในช่วงนี้" aria-label="ช่วงเวลาของงานที่เสร็จแล้ว" class="shrink-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-h-[40px] bg-white outline-none focus:ring-2 focus:ring-brand-500">
+          <option value="7">งานเสร็จ 7 วันล่าสุด</option>
+          <option value="30">งานเสร็จ 30 วันล่าสุด</option>
+          <option value="0">งานเสร็จทั้งหมด</option>
         </select>
         <button id="boardReset" class="shrink-0 text-slate-500 hover:text-slate-700 text-sm px-2 py-1.5 min-h-[40px]">ล้างตัวกรอง</button>
         <span id="boardCount" class="shrink-0 text-xs text-slate-500 ml-auto pl-2 whitespace-nowrap"></span>
@@ -251,22 +255,22 @@
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3">
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--ink-muted)"></span>ตั๋วทั้งหมด</div>
-            <div class="viz-hero" id="kpiTotal">0</div>
+            <div class="viz-hero" id="kpiTotal">—</div>
             <div class="viz-kpi-sub">All tickets</div>
           </div>
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--st-open)"></span>รอรับเรื่อง</div>
-            <div class="viz-kpi-value" id="kpiOpen">0</div>
+            <div class="viz-kpi-value" id="kpiOpen">—</div>
             <div class="viz-kpi-sub" id="kpiOpenPct">Open · 0%</div>
           </div>
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--st-prog)"></span>กำลังดำเนินการ</div>
-            <div class="viz-kpi-value" id="kpiProg">0</div>
+            <div class="viz-kpi-value" id="kpiProg">—</div>
             <div class="viz-kpi-sub" id="kpiProgPct">In Progress · 0%</div>
           </div>
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--st-done)"></span>เสร็จสิ้น</div>
-            <div class="viz-kpi-value" id="kpiDone">0</div>
+            <div class="viz-kpi-value" id="kpiDone">—</div>
             <div class="viz-kpi-sub" id="kpiDonePct">Closed · 0%</div>
           </div>
         </div>
@@ -439,6 +443,8 @@
             </table>
             <div id="usersEmpty" class="hidden py-6 text-center text-xs" style="color:var(--ink-muted)">ไม่พบผู้ใช้ที่ตรงกับเงื่อนไข</div>
           </div>
+          <!-- แบ่งหน้า: ดึงจาก DB ทีละ 20 คน (วาดโดย renderPager) -->
+          <div id="usersPager" class="hidden mt-3 flex items-center justify-between gap-2"></div>
           <div id="usersEditNote" class="hidden mt-2 text-[11px]" style="color:var(--ink-muted)">
             <span data-icon="lock" data-icon-class="w-3.5 h-3.5 inline -mt-0.5"></span> การเปลี่ยนบทบาทเปิดเฉพาะบัญชีที่มีสิทธิ์แอดมิน — บัญชีของคุณยังไม่ใช่แอดมิน
           </div>
@@ -471,6 +477,9 @@
           <div id="kbEmpty" class="hidden py-8 text-center text-xs" style="color:var(--ink-muted)">
             ยังไม่มีประวัติการแจ้งซ่อม<br>จะถูกสร้างอัตโนมัติเมื่อปิดงานบนตารางงาน IT พร้อมบันทึกวิธีแก้ไข
           </div>
+          <div id="kbNoMatch" class="hidden py-8 text-center text-xs" style="color:var(--ink-muted)">ไม่พบประวัติที่ตรงกับเงื่อนไข</div>
+          <!-- แบ่งหน้า: ดึงจาก DB ทีละ 20 รายการ (วาดโดย renderPager) -->
+          <div id="kbPager" class="hidden mt-4 flex items-center justify-between gap-2"></div>
         </div>
 
       </div>

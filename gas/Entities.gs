@@ -49,6 +49,31 @@ function ticketCode_(id) {
   return 'TK-' + id;
 }
 
+// ---------- การแบ่งหน้า (ดึงจาก DB ทีละหน้า) ----------
+// page/pageSize มาจาก client จึงบังคับช่วงค่า — กันขอทีเดียวหลายพันแถวจน GAS/แคชล้น
+const PAGE_SIZE_DEFAULT = 20;
+const PAGE_SIZE_MAX = 50;
+
+function pageArgs_(data) {
+  const size = parseInt(data && data.pageSize, 10);
+  return {
+    page: Math.max(1, parseInt(data && data.page, 10) || 1),
+    size: size > 0 ? Math.min(size, PAGE_SIZE_MAX) : PAGE_SIZE_DEFAULT
+  };
+}
+
+// ขอหน้าที่เลยหน้าสุดท้าย (เช่นเพิ่งลบแถวสุดท้ายของหน้านั้น) -> ได้หน้าสุดท้ายที่มีจริงแทนหน้าว่าง
+function clampPage_(page, size, total) {
+  return Math.min(page, Math.max(1, Math.ceil(total / size)));
+}
+
+// คำค้น -> pattern ของ ILIKE แบบ "มีคำนี้อยู่ตรงไหนก็ได้" ('' = ไม่ค้น)
+// escape % _ \ ให้เป็นตัวอักษรธรรมดา ไม่งั้นค้น "50%" จะกลายเป็น wildcard
+function likePattern_(q) {
+  const s = cleanText_(q).slice(0, 100);
+  return s ? '%' + s.replace(/[\\%_]/g, '\\$&') + '%' : '';
+}
+
 function ok_(extra) {
   return Object.assign({ status: 'success' }, extra || {});
 }

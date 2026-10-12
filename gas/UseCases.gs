@@ -80,11 +80,60 @@ function createTicket(data, auth) {
 // คำสั่งอ่านผ่าน cachedRead_ (Infrastructure.gs): ครั้งแรกอ่าน DB แล้วเก็บไว้ ครั้งถัดไปไม่แตะ DB เลย
 // ทุกคำสั่งเขียนที่สำเร็จล้างแคชทั้งหมดให้เอง (doPost -> bumpDataVersion_) ข้อมูลจึงไม่ค้าง
 // ผลที่ต่างกันตามผู้ใช้ ต้องใส่ userId ในชื่อแคชเสมอ (ไม่งั้นคนหนึ่งเห็นข้อมูลของอีกคน)
+// รายการที่แบ่งหน้า: ไม่แคชผลค้นหา (พิมพ์ทีไรก็คนละคำ เปลืองที่แคชเปล่าๆ)
 
-function getTickets() {
-  return cachedRead_('tickets', function () {
+// ตัวกรองของบอร์ดจาก client -> ค่าที่ตรวจแล้ว (Repositories.boardWhere_ ใช้ต่อ)
+function boardFilter_(data, auth) {
+  return {
+    q: likePattern_(data.q),
+    categoryId: toId_(data.categoryId),
+    province: cleanText_(data.province).slice(0, 50),
+    assignee: data.mine ? auth.userId : '',          // งานของฉัน = ผู้รับงานคือคนที่ login (ไม่เทียบด้วยชื่อ)
+    closedDays: Math.min(toId_(data.closedDays), 3650),   // 0 = งานเสร็จทั้งหมด
+    desc: data.sort !== 'old'
+  };
+}
+
+// บอร์ด Kanban — แบ่งหน้าแยกแต่ละคอลัมน์ แต่ตอบครบ 3 คอลัมน์ในรอบเดียว
+// data = { q, categoryId, province, mine, closedDays, sort: 'new'|'old', pageSize, pages: { 1: n, 2: n, 3: n }, facets }
+// facets = แนบรายการหมวดหมู่สำหรับตัวกรอง (หน้าเว็บขอแค่ครั้งแรก)
+// คำตอบ: columns[{ status, page, total, all, tickets }] — page ถูกปรับถ้าขอเกินหน้าสุดท้าย
+function getBoard(data, auth) {
+  data = data || {};
+  const f = boardFilter_(data, auth);
+  const size = pageArgs_(data).size;
+  const statuses = [TICKET_STATUS.OPEN, TICKET_STATUS.IN_PROGRESS, TICKET_STATUS.CLOSED];
+  const want = statuses.map(function (s) { return Math.max(1, parseInt(data.pages && data.pages[s], 10) || 1); });
+  const facets = !!data.facets;
+
+  const run = function () {
     return withConn_(function (conn) {
-      return ok_({ tickets: findActiveTickets_(conn) });
+      const counts = countBoardTickets_(conn, f);
+      const cols = statuses.map(function (s, i) {
+        const c = counts[s] || { n: 0, all: 0 };
+        return { status: s, page: clampPage_(want[i], size, c.n), total: c.n, all: c.all, tickets: [] };
+      });
+      findBoardPage_(conn, f, size, cols).forEach(function (t) {
+        cols.forEach(function (c) { if (c.status === t.status) c.tickets.push(t); });
+      });
+      const res = { columns: cols, pageSize: size };
+      if (facets) res.categories = readMasterRows_(conn, MASTER_TABLES.category, false);
+      return ok_(res);
+    });
+  };
+  // "งานของฉัน" มี userId อยู่ใน f แล้ว -> แคชแยกคนเอง
+  return f.q ? run() : cachedRead_('board_' + argsKey_([f, size, want, facets]), run);
+}
+
+// แดชบอร์ด — สรุปใน SQL ทั้งหมด (Repositories.readDashboard_) ไม่ต้องโหลดตั๋วทุกใบ
+// agingDays = เกณฑ์ "ค้าง" จากหน้าตั้งค่า (เก็บแยกแต่ละเบราว์เซอร์) จึงอยู่ในชื่อแคช
+function getDashboard(data) {
+  const agingDays = Math.min(toId_(data && data.agingDays) || 3, 30);
+  return cachedRead_('dash_' + agingDays, function () {
+    return withConn_(function (conn) {
+      const d = readDashboard_(conn, agingDays);
+      d.oldest.forEach(function (t) { t.code = ticketCode_(t.id); });
+      return ok_(d);
     });
   });
 }
@@ -145,12 +194,26 @@ function deleteTicket(data, auth) {
    USER
    --------------------------------------------------------------------------- */
 
-function getUsers() {
-  return cachedRead_('users', function () {
+// data = { q, role: 'admin'|'it'|'staff' (ว่าง = ทั้งหมด), page, pageSize }
+// counts = ยอดบนการ์ด KPI ของทั้งระบบ (ไม่สนตัวกรอง) · total = จำนวนที่ตรงตัวกรอง
+function getUsers(data) {
+  data = data || {};
+  const role = cleanText_(data.role).toLowerCase();
+  const f = { q: likePattern_(data.q), role: ROLE_DB_VALUE[role] ? role : '' };
+  const pg = pageArgs_(data);
+
+  const run = function () {
     return withConn_(function (conn) {
-      return ok_({ users: findAllUsers_(conn) });
+      const c = countUsers_(conn, f);
+      const page = clampPage_(pg.page, pg.size, c.n);
+      return ok_({
+        users: findUsersPage_(conn, f, pg.size, (page - 1) * pg.size),
+        total: c.n, page: page, pageSize: pg.size,
+        counts: { all: c.all, admin: c.admin, it: c.it, staff: c.all - c.admin - c.it }
+      });
     });
-  });
+  };
+  return f.q ? run() : cachedRead_('users_' + argsKey_([f, pg]), run);
 }
 
 // ข้อมูลบัญชีของตัวเอง (Topbar + หน้าตั้งค่า) — ไม่ต้องรอ getUsers (Admin-only)
@@ -188,12 +251,27 @@ function updateUserRole(data) {
    KNOWLEDGE_BASE (ประวัติการแจ้งซ่อม / วิธีแก้ไขปัญหา)
    --------------------------------------------------------------------------- */
 
-function getKnowledgeBase() {
-  return cachedRead_('kb', function () {
+// data = { q, categoryId: id | 'none' (ไม่มีหมวด) | ว่าง (ทุกหมวด), page, pageSize, facets }
+// facets = แนบยอดต่อหมวดสำหรับชิพกรอง (หน้าเว็บขอตอนเข้าหน้าครั้งแรก / หลังแก้ข้อมูล)
+function getKnowledgeBase(data) {
+  data = data || {};
+  const f = { q: likePattern_(data.q), categoryId: data.categoryId === 'none' ? 'none' : toId_(data.categoryId) };
+  const pg = pageArgs_(data);
+  const facets = !!data.facets;
+
+  const run = function () {
     return withConn_(function (conn) {
-      return ok_({ articles: findAllArticles_(conn) });
+      const total = countArticles_(conn, f);
+      const page = clampPage_(pg.page, pg.size, total);
+      const res = {
+        articles: findArticlesPage_(conn, f, pg.size, (page - 1) * pg.size),
+        total: total, page: page, pageSize: pg.size
+      };
+      if (facets) res.categories = countArticlesByCategory_(conn);
+      return ok_(res);
     });
-  });
+  };
+  return f.q ? run() : cachedRead_('kb_' + argsKey_([f, pg, facets]), run);
 }
 
 // ตอนปิดงานพร้อมกรอกวิธีแก้ไข — ผู้บันทึก = auth.userId

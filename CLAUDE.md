@@ -68,8 +68,17 @@ GAS ไม่ตอบ preflight (`OPTIONS`) การใช้ `application/jso
 
 **ความเร็ว:** GAS มีเพดานต่ำสุด ~1.5-2 วิ/request (วัดแล้ว: รันสคริปต์ 1-1.5 วิ + 302 redirect 0.4-0.6 วิ)
 DB อยู่โตเกียว (`ap-northeast-1` pooler :6543) แต่ GAS รันฝั่งอเมริกา — เปิด connection ใหม่ ~0.7-1.5 วิ
-- หน้าเว็บ: โชว์ข้อมูลที่จำในเครื่องก่อนแล้วอัปเดตทีหลัง (`ft_my_tickets_v2`, `ft_tickets_v2` ผูก LINE userId) ·
+- หน้าเว็บ: โชว์ข้อมูลที่จำในเครื่องก่อนแล้วอัปเดตทีหลัง (`ft_my_tickets_v2`, `ft_board_v3`, `ft_dash_v1` ผูก LINE userId) ·
   `<link rel="preconnect">` ไป GAS ทุกหน้า
+- **รายการในคอนโซล admin แบ่งหน้าที่ DB (2026-10-12)** — บอร์ด (`getBoard` แบ่งหน้าแยกแต่ละคอลัมน์ แต่ตอบครบ 3 คอลัมน์
+  ใน query เดียวด้วย `ROW_NUMBER() OVER (PARTITION BY Status)`), ผู้ใช้ (`getUsers`), ประวัติ (`getKnowledgeBase`) ทีละ 20
+  · กรอง/ค้นหา/เรียงทำใน SQL ทั้งหมด (ค้นด้วย `ILIKE` ผ่าน `likePattern_` ที่ escape `% _ \`) · ขอหน้าเกินหน้าสุดท้าย =
+  ได้หน้าสุดท้าย (`clampPage_`) · แดชบอร์ดสรุปใน SQL query เดียว (`readDashboard_` ประกอบ JSON ใน Postgres)
+  **ห้ามกลับไปโหลดทั้งตารางมาคำนวณที่หน้าเว็บ** — นั่นคือเหตุผลที่แยกเป็นหลาย action
+  - หน้าเว็บจำหน้าที่โหลดแล้ว 60 วิ + โหลดหน้าถัดไปรอไว้ (`fetchPage`/`prefetchPage` ใน `admin.js`) · ล้างทุกครั้งที่แก้ข้อมูล
+  - ผลค้นหา (มีคำค้น) ไม่แคชฝั่ง GAS · ชื่อแคชของรายการที่มีพารามิเตอร์ใช้ `argsKey_` (MD5 — key ยาวได้ ≤250 ตัวอักษร)
+  - "งานของฉัน" กรองด้วย `IT_In_Charge = auth.userId` ฝั่ง server (ไม่เทียบชื่อ) — userId อยู่ในชื่อแคชเอง
+  - โหมดตัวอย่างแบ่งหน้าในเครื่อง (`mockBoard`/`mockUsersPage`/`mockKbPage`) ไม่ยิง backend ที่เพิ่งล้มซ้ำทุกครั้งที่เปลี่ยนหน้า
 - **connection เดียวต่อ request** (`REQ_CONN_` ใน `Infrastructure.gs`) — `withConn_` ไม่ปิด connection เอง
   `doPost` ปิดใน `finally` · ห้ามเรียก `getDbConnection()` ตรงๆ ใน use case/repository
   · `withTx_` ต้องคืน `autoCommit(true)` เสมอ เพราะ connection ถูกใช้ต่อ
@@ -143,7 +152,7 @@ DB อยู่โตเกียว (`ap-northeast-1` pooler :6543) แต่ G
 | กลุ่ม | actions |
 |---|---|
 | `'*'` | `generateDocument`, `createTicket`, `deleteTempPdf`, `getMyTickets`, `getMasterData` |
-| `IT` + `Admin` | `getTickets`, `acceptTicket`, `updateTicketStatus`, `getKnowledgeBase`, `addKnowledgeArticle`, `updateKnowledgeArticle`, `deleteKnowledgeArticle`, `getMyProfile` |
+| `IT` + `Admin` | `getBoard`, `getDashboard`, `acceptTicket`, `updateTicketStatus`, `getKnowledgeBase`, `addKnowledgeArticle`, `updateKnowledgeArticle`, `deleteKnowledgeArticle`, `getMyProfile` |
 | `Admin` | `deleteTicket`, `getUsers`, `updateUserRole`, `addMasterItem`, `updateMasterItem`, `deleteMasterItem` |
 
 - `deleteTempPdf` เปิดให้ทุกคน จึงลบได้เฉพาะไฟล์ในโฟลเดอร์ PDF ของระบบ **ที่ยังไม่มีตั๋วใบไหนอ้างถึง**
@@ -318,7 +327,7 @@ SVG `preserveAspectRatio` แบบ meet จะย่อ **ทั้งภาพ
 **เช็คว่า backend ยัง deploy ถูกตัวไหม:**
 
 ```bash
-curl -sL "$GAS_API_URL" -H "Content-Type: text/plain;charset=utf-8" --data-binary '{"action":"getTickets","data":{}}'
+curl -sL "$GAS_API_URL" -H "Content-Type: text/plain;charset=utf-8" --data-binary '{"action":"getBoard","data":{}}'
 ```
 
 ต้องได้ `ยืนยันตัวตน LINE ไม่สำเร็จ` = auth ทำงาน · **อย่าใส่ `-X POST`**
