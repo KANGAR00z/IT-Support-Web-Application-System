@@ -1,0 +1,212 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>FAST TICKET backend tests</title></head>
+<body>
+<pre id="log">loading…</pre>
+<script type="module">
+// ทดสอบ backend: รัน gas/*.gs ตัวจริง กับ Postgres จริง (PGlite/WASM) + ข้อมูลทดสอบ แล้วเทียบผลใน tests.js
+// วิธีรัน: ดู tests/README.md · ไม่แตะ Supabase / Google จริง (บริการของ GAS เป็นตัวจำลองทั้งหมด)
+// Runs the real gas/*.gs against a real Postgres (PGlite/WASM).
+// GAS JDBC is synchronous, PGlite is async -> fixpoint: run doPost; when it hits a query whose
+// result we don't have yet, the mock records it and throws; we execute it in PGlite and rerun.
+// Every distinct (sql, params) runs once per request, so writes are not repeated on reruns.
+import { PGlite } from 'https://cdn.jsdelivr.net/npm/@electric-sql/pglite@0.2.17/dist/index.js';
+
+const log = (s) => { document.getElementById('log').textContent += '\n' + s; };
+const db = new PGlite();
+window.db = db;
+
+// ---------- schema (matches docs/FAST_TICKET_Data_Dictionary_ERD) ----------
+await db.exec(`
+CREATE TABLE "EXCISE_OFFICE" ("Office_ID" serial PRIMARY KEY, "Parent_Office_ID" int REFERENCES "EXCISE_OFFICE",
+  "Office_Name" varchar(100) NOT NULL, "Province" varchar(100));
+CREATE TABLE "BRANCH" ("Branch_ID" serial PRIMARY KEY, "Office_ID" int NOT NULL REFERENCES "EXCISE_OFFICE", "Branch_Name" varchar(100) NOT NULL);
+CREATE TABLE "DEPARTMENT" ("Dept_ID" serial PRIMARY KEY, "Dept_Name" varchar(100) NOT NULL);
+CREATE TABLE "ISSUE_CATEGORY" ("Category_ID" serial PRIMARY KEY, "Category_Name" varchar(100) NOT NULL);
+CREATE TABLE "USER" ("LINE_User_ID" varchar(50) PRIMARY KEY, "Full_Name" varchar(150) NOT NULL, "Position" varchar(100),
+  "Role" varchar(20) NOT NULL CHECK ("Role" IN ('Staff','IT','Admin')), "Branch_ID" int REFERENCES "BRANCH", "Dept_ID" int REFERENCES "DEPARTMENT");
+CREATE TABLE "TICKET" ("Ticket_ID" serial PRIMARY KEY, "Created_Date" timestamptz NOT NULL DEFAULT now(), "Accepted_Date" timestamptz,
+  "Closed_Date" timestamptz, "LINE_User_ID" varchar(50) NOT NULL REFERENCES "USER", "Office_ID" int REFERENCES "EXCISE_OFFICE",
+  "Category_ID" int NOT NULL REFERENCES "ISSUE_CATEGORY", "Issue_Detail" text NOT NULL, "Image_URL" text, "Doc_PDF_URL" text,
+  "Status" smallint NOT NULL CHECK ("Status" BETWEEN 1 AND 3), "IT_In_Charge" varchar(50) REFERENCES "USER",
+  "Branch_ID" int REFERENCES "BRANCH", "Dept_ID" int REFERENCES "DEPARTMENT", "Deleted_At" timestamptz, "Deleted_By" varchar(50) REFERENCES "USER");
+CREATE TABLE "KNOWLEDGE_BASE" ("KB_ID" serial PRIMARY KEY, "Ticket_ID" int NOT NULL REFERENCES "TICKET", "Category_ID" int REFERENCES "ISSUE_CATEGORY",
+  "Resolution_Text" text NOT NULL, "Created_Date" timestamptz DEFAULT now(), "Created_By" varchar(50) NOT NULL REFERENCES "USER");
+`);
+
+// ---------- seed (deterministic) — also kept in JS so tests can compute expected values ----------
+let seed = 7;
+const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+const pick = (a) => a[Math.floor(rnd() * a.length)];
+const PROV = ['ตรัง', 'พัทลุง', 'สตูล', 'สงขลา', 'ปัตตานี', 'ยะลา', 'นราธิวาส'];
+const S = { offices: [], branches: [], depts: ['ส่วนอำนวยการ', 'ส่วนบริหารจัดเก็บภาษี', 'ส่วนเทคโนโลยีสารสนเทศ'], cats: [], users: [], tickets: [], kb: [] };
+S.offices.push({ id: 1, parent: null, name: 'สำนักงานสรรพสามิตภาคที่ 9', prov: 'สงขลา' });
+PROV.forEach((p, i) => S.offices.push({ id: i + 2, parent: 1, name: 'สำนักงานสรรพสามิตพื้นที่' + p, prov: p }));
+S.branches.push({ id: 1, office: 1, name: 'สำนักงานสรรพสามิตภาคที่ 9' });
+S.offices.slice(1).forEach(o => {
+  S.branches.push({ id: o.id + 1000, office: o.id, name: o.name });
+  S.branches.push({ id: o.id * 10, office: o.id, name: o.name + ' สาขาเมือง' + o.prov });
+});
+S.cats = [{ id: 1, name: '💻 ฮาร์ดแวร์ (Hardware)' }, { id: 2, name: 'ซอฟต์แวร์ (Software)' }, { id: 3, name: 'เครือข่าย' }, { id: 4, name: 'อื่นๆ' }];
+S.users.push({ id: 'Uadmin', name: 'นายสองพัน แซ่ชั่น', pos: 'เจ้าหน้าที่ไอที', role: 'Admin', branch: 1, dept: 3 });
+S.users.push({ id: 'Uit', name: 'วิชัย ไอที', pos: 'นักวิชาการคอมพิวเตอร์', role: 'IT', branch: 1, dept: 3 });
+S.users.push({ id: 'Uit2', name: 'สมคิด ช่างดี', pos: 'นักวิชาการคอมพิวเตอร์', role: 'IT', branch: 1, dept: 3 });
+const FIRST = ['กัญญา', 'นพดล', 'นูรีดา', 'ปรีชา', 'วิภาดา', 'ฮาซัน', 'สมหญิง', 'มานี', 'สุรชัย', 'ยะห์ยา', 'อารีย์', 'ประสิทธิ์'];
+for (let i = 0; i < 45; i++) {
+  const b = pick(S.branches);
+  S.users.push({ id: 'Ustaff' + String(i).padStart(3, '0'), name: FIRST[i % FIRST.length] + ' ทดสอบ' + i, pos: pick(['เจ้าพนักงานธุรการ', 'นักตรวจสอบภาษี', 'เจ้าหน้าที่ทั่วไป']),
+    role: 'Staff', branch: b.id, dept: (i % 3) + 1 });
+}
+S.users.push({ id: 'Uweird', name: 'ผู้ใช้ 50% _พิเศษ_', pos: 'ทดสอบ', role: 'Staff', branch: 20, dept: 1 });
+const DAY = 864e5, NOW = Date.now();
+const ISSUES = ['ปริ้นเตอร์พิมพ์ไม่ออก', 'เน็ตหลุดบ่อย', 'ลืมรหัสผ่าน', 'จอมีเส้น', 'ขอติดตั้งโปรแกรม', 'อีเมลส่งไม่ได้', 'เมาส์เสีย', 'ลดราคา 50% ไม่ขึ้น'];
+const staffUsers = S.users.filter(u => u.role === 'Staff');
+for (let i = 1; i <= 75; i++) {
+  const rep = pick(staffUsers);
+  const br = S.branches.find(b => b.id === rep.branch);
+  const created = NOW - Math.floor(rnd() * 60 * DAY) - 3600e3;
+  const status = i % 5 === 0 ? 2 : (i % 2 ? 3 : 1);
+  const it = status === 1 ? null : pick(['Uadmin', 'Uit', 'Uit2']);
+  const accepted = status === 1 ? null : created + Math.floor(rnd() * 2 * DAY) + 60e3;
+  let closed = status === 3 ? accepted + Math.floor(rnd() * 3 * DAY) + 60e3 : null;
+  if (closed && closed > NOW) closed = NOW - 60e3;
+  const deleted = i % 17 === 0 ? NOW - DAY : null;
+  S.tickets.push({ id: i, created, accepted: accepted && Math.min(accepted, NOW - 120e3), closed, rep: rep.id, office: br.office, branch: br.id,
+    dept: rep.dept, cat: (i % 4) + 1, detail: '[PR-' + i + '] ' + pick(ISSUES), status, it, deleted });
+}
+// ticket with null closed date in status 3 (old data) and null branch
+S.tickets.push({ id: 76, created: NOW - 90 * DAY, accepted: null, closed: null, rep: 'Ustaff001', office: 1, branch: null, dept: null, cat: 4,
+  detail: 'ตั๋วเก่าไม่มีวันปิด', status: 3, it: null, deleted: null });
+let kbId = 0;
+S.tickets.filter(t => t.status === 3).forEach(t => {
+  const n = t.id % 4 === 1 ? 2 : 1;   // ticket closed-reopened-closed -> 2 rows
+  for (let j = 0; j < n; j++) {
+    S.kb.push({ id: ++kbId, ticket: t.id, cat: t.id % 7 === 0 ? null : t.cat, text: (j ? 'รอบสอง ' : '') + 'แก้โดยเปลี่ยนอะไหล่ #' + t.id + (t.id === 9 ? ' ลด 50% แล้ว' : ''),
+      created: (t.closed || NOW - 50 * DAY) + 1000 + j * 3600e3, by: t.it || 'Uadmin' });
+  }
+});
+const iso = (ms) => ms == null ? null : new Date(ms).toISOString();
+const ins = async (table, cols, rows) => {
+  for (const r of rows) {
+    await db.query(`INSERT INTO "${table}" (${cols.map(c => '"' + c + '"').join(',')}) VALUES (${cols.map((_, i) => '$' + (i + 1)).join(',')})`, r);
+  }
+};
+await ins('EXCISE_OFFICE', ['Office_ID', 'Parent_Office_ID', 'Office_Name', 'Province'], S.offices.map(o => [o.id, o.parent, o.name, o.prov]));
+await ins('BRANCH', ['Branch_ID', 'Office_ID', 'Branch_Name'], S.branches.map(b => [b.id, b.office, b.name]));
+await ins('DEPARTMENT', ['Dept_ID', 'Dept_Name'], S.depts.map((d, i) => [i + 1, d]));
+await ins('ISSUE_CATEGORY', ['Category_ID', 'Category_Name'], S.cats.map(c => [c.id, c.name]));
+await ins('USER', ['LINE_User_ID', 'Full_Name', 'Position', 'Role', 'Branch_ID', 'Dept_ID'], S.users.map(u => [u.id, u.name, u.pos, u.role, u.branch, u.dept]));
+await ins('TICKET', ['Ticket_ID', 'Created_Date', 'Accepted_Date', 'Closed_Date', 'LINE_User_ID', 'Office_ID', 'Category_ID', 'Issue_Detail', 'Status', 'IT_In_Charge', 'Branch_ID', 'Dept_ID', 'Deleted_At', 'Deleted_By'],
+  S.tickets.map(t => [t.id, iso(t.created), iso(t.accepted), iso(t.closed), t.rep, t.office, t.cat, t.detail, t.status, t.it, t.branch, t.dept, iso(t.deleted), t.deleted ? 'Uadmin' : null]));
+await ins('KNOWLEDGE_BASE', ['KB_ID', 'Ticket_ID', 'Category_ID', 'Resolution_Text', 'Created_Date', 'Created_By'], S.kb.map(k => [k.id, k.ticket, k.cat, k.text, iso(k.created), k.by]));
+await db.exec(`SELECT setval(pg_get_serial_sequence('"TICKET"','Ticket_ID'), 1000); SELECT setval(pg_get_serial_sequence('"KNOWLEDGE_BASE"','KB_ID'), 1000);`);
+window.SEED = S;
+window.SEED_NOW = NOW;
+log('seeded: ' + S.tickets.length + ' tickets, ' + S.users.length + ' users, ' + S.kb.length + ' kb');
+
+// ---------- GAS service mocks ----------
+// raw text for every type = what JDBC getString() returns
+const RAW = {};
+[16, 20, 21, 23, 25, 26, 114, 700, 701, 1043, 1082, 1114, 1184, 1700, 3802].forEach(o => RAW[o] = (x) => x);
+const toPg = (sql) => { let n = 0; return sql.replace(/\?/g, () => '$' + (++n)); };
+const results = new Map();
+let need = null;
+window.__sqlLog = [];
+
+function rsOf(r) {
+  let i = -1, last = null;
+  const val = (c) => {
+    const row = r.rows[i];
+    if (typeof c === 'number') return Object.values(row)[c - 1];
+    if (c in row) return row[c];
+    const k = Object.keys(row).find(x => x.toLowerCase() === String(c).toLowerCase());   // JDBC labels are case-insensitive
+    if (k === undefined) throw new Error('no column ' + c);
+    return row[k];
+  };
+  return {
+    next: () => ++i < r.rows.length,
+    getString: (c) => { last = val(c); return last == null ? null : String(last); },
+    getInt: (c) => { last = val(c); return last == null ? 0 : parseInt(last, 10); },
+    wasNull: () => last == null,
+  };
+}
+function exec(kind, sql, p) {
+  const k = kind + '|' + sql + '|' + JSON.stringify(p);
+  if (!results.has(k)) { need = { k, sql, p: p.slice() }; throw new Error('NEED_QUERY'); }
+  return results.get(k);
+}
+window.getDbConnection = () => ({
+  prepareStatement(sql) {
+    const p = [];
+    return {
+      setString: (i, v) => { p[i - 1] = String(v); }, setInt: (i, v) => { p[i - 1] = v | 0; }, setNull: (i) => { p[i - 1] = null; },
+      executeQuery() { return rsOf(exec('q', sql, p)); },
+      executeUpdate() { return exec('u', sql, p).affected; },
+    };
+  },
+  createStatement() { return { executeQuery(sql) { return rsOf(exec('q', sql, [])); } }; },
+  setAutoCommit() {}, commit() {}, rollback() {}, close() {},
+});
+const cache = {};
+window.__cache = cache;
+window.Jdbc = { Types: { VARCHAR: 12, INTEGER: 4 } };
+window.CacheService = { getScriptCache: () => ({ get: k => cache[k] ?? null, put: (k, v) => { cache[k] = v; }, remove: k => { delete cache[k]; },
+  putAll: (o) => Object.assign(cache, o), getAll: (ks) => Object.fromEntries(ks.filter(k => k in cache).map(k => [k, cache[k]])) }) };
+window.PropertiesService = { getScriptProperties: () => ({ getProperty: () => 'CH' }) };
+window.__sub = 'Uadmin';   // who is calling (set by tests)
+window.UrlFetchApp = { fetch: (u, o) => ({ getResponseCode: () => 200,
+  getContentText: () => JSON.stringify({ aud: 'CH', sub: o.payload.id_token, exp: Date.now() / 1000 + 600 }) }) };
+const enc = new TextEncoder();
+window.Utilities = {
+  DigestAlgorithm: { SHA_256: 'SHA-256', MD5: 'MD5' }, Charset: { UTF_8: 'utf8' },
+  // not a real digest — only needs to be deterministic and distinct per input
+  computeDigest: (a, s) => { let h1 = 0x811c9dc5, h2 = 7; for (const b of enc.encode(String(s))) { h1 = Math.imul(h1 ^ b, 16777619); h2 = (h2 * 31 + b) | 0; }
+    return [h1 >>> 24, (h1 >>> 16) & 255, (h1 >>> 8) & 255, h1 & 255, h2 >>> 24, (h2 >>> 16) & 255, (h2 >>> 8) & 255, h2 & 255, String(s).length & 255]; },
+  base64Encode: (d) => btoa(String.fromCharCode(...d.map(x => x & 255))),
+  base64EncodeWebSafe: (d) => btoa(String.fromCharCode(...d.map(x => x & 255))).replace(/\+/g, '-').replace(/\//g, '_'),
+  base64Decode: (s) => Array.from(atob(s), c => c.charCodeAt(0)),
+  newBlob: (d) => { const bytes = typeof d === 'string' ? Array.from(enc.encode(d)) : d;
+    return { getBytes: () => bytes, getDataAsString: () => new TextDecoder().decode(new Uint8Array(bytes)) }; },
+  gzip: (b) => b, ungzip: (b) => b,
+};
+window.ContentService = { createTextOutput: (s) => ({ setMimeType() { return JSON.parse(s); } }), MimeType: { JSON: 1, TEXT: 2 } };
+
+// ---------- load the backend ----------
+const files = ['Entities.gs', 'Infrastructure.gs', 'Repositories.gs', 'UseCases.gs', 'ApiRouter.gs'];
+const src = (await Promise.all(files.map(f => fetch('../gas/' + f + '?t=' + Date.now()).then(r => r.text())))).join('\n;\n');
+const el = document.createElement('script');
+el.textContent = src;
+document.head.appendChild(el);
+
+// one HTTP request -> doPost, rerunning until every query it needs has a result
+window.gasCall = async (bodyText) => {
+  results.clear();
+  for (let round = 0; round < 60; round++) {
+    need = null;
+    const out = doPost({ postData: { contents: bodyText } });
+    if (!need) return out;
+    try {
+      const r = await db.query(toPg(need.sql), need.p, { parsers: RAW });
+      results.set(need.k, { rows: r.rows, affected: r.affectedRows || 0 });
+      window.__sqlLog.push(need.sql.replace(/\s+/g, ' ').slice(0, 90));
+    } catch (e) {
+      e.message = 'SQL ERROR: ' + e.message + '\n' + need.sql + '\nPARAMS ' + JSON.stringify(need.p);
+      throw e;
+    }
+  }
+  throw new Error('too many rounds');
+};
+window.api = async (action, data, sub) => window.gasCall(JSON.stringify({ action, idToken: sub || window.__sub, data: data || {} }));
+window.engineReady = true;
+log('engine ready — running tests.js …');
+const t0 = performance.now();
+try {
+  const r = (await import('./tests.js?t=' + Date.now())).default;
+  const total = r.passes + r.fails.length;
+  log((r.fails.length ? 'FAIL' : 'PASS') + `: ${r.passes}/${total} checks passed (${Math.round(performance.now() - t0)} ms)`);
+  r.fails.forEach(f => log('  ✗ ' + f));
+  document.title = (r.fails.length ? '✗ ' : '✓ ') + document.title;
+} catch (e) {
+  log('CRASH: ' + e.message);
+}
+</script>
+</body></html>
