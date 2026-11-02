@@ -50,11 +50,27 @@ const FT_TIMEOUT_WRITE = 60e3;   // สร้าง PDF ใช้เวลาน
 
 // ยิง 1 ครั้ง -> JSON · แปลง error ดิบของเบราว์เซอร์ ("Failed to fetch") เป็นสาเหตุที่ผู้ใช้เข้าใจ
 // GAS ที่พัง/เกินเวลาตอบเป็นหน้า HTML ไม่มี header CORS เบราว์เซอร์จึงรายงานแค่ "Failed to fetch"
-async function ftFetchJson_(body, timeoutMs) {
+// คำสั่งที่ใช้ Google Drive อยู่ที่ GAS เสมอ — ที่เหลือไป Worker ถ้าตั้ง WORKER_API_URL ใน config.js ไว้
+const FT_GAS_ONLY = { generateDocument: true, createTicket: true, deleteTempPdf: true };
+const ftWorkerUrl = () => (typeof WORKER_API_URL !== 'undefined' && WORKER_API_URL) || '';
+const ftApiUrl = (action) => (ftWorkerUrl() && !FT_GAS_ONLY[action]) ? ftWorkerUrl() : GAS_API_URL;
+
+// เปิดการเชื่อมต่อไป Worker ล่วงหน้าระหว่างรอ LIFF init (ของ GAS ใส่ไว้ใน <head> ทุกหน้าแล้ว)
+if (ftWorkerUrl() && typeof document !== 'undefined') {
+  try {
+    const l = document.createElement('link');
+    l.rel = 'preconnect';
+    l.href = new URL(ftWorkerUrl(), location.href).origin;
+    l.crossOrigin = '';
+    document.head.appendChild(l);
+  } catch (e) { /* URL ผิดรูปแบบ — ข้ามไป ตอนเรียกจริงจะขึ้นหน้าสถานะเอง */ }
+}
+
+async function ftFetchJson_(body, timeoutMs, url) {
   const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
   const timer = ctrl ? setTimeout(() => ctrl.abort(), timeoutMs) : null;
   try {
-    const res = await fetch(GAS_API_URL, {
+    const res = await fetch(url || GAS_API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body,
@@ -101,7 +117,7 @@ async function ftCallBackend(action, data, log, opts) {
   // คำสั่งอ่านลองซ้ำได้ 1 ครั้งเมื่อเน็ต/เซิร์ฟเวอร์สะดุด · คำสั่งเขียนห้ามลองซ้ำเอง (แจ้งซ่อมซ้ำ 2 ใบ)
   for (let attempt = 1; ; attempt++) {
     try {
-      json = await ftFetchJson_(body, read ? FT_TIMEOUT_READ : FT_TIMEOUT_WRITE);
+      json = await ftFetchJson_(body, read ? FT_TIMEOUT_READ : FT_TIMEOUT_WRITE, ftApiUrl(action));
       break;
     } catch (e) {
       if (log) log(action + ' attempt ' + attempt + ' failed: ' + e.message);

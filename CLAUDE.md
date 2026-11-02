@@ -27,6 +27,14 @@ LINE app → LIFF (DEMO/*.html บน Cloudflare Worker)
          Supabase Postgres          + Google Drive (เก็บ PDF บันทึกข้อความ)
 ```
 
+**ทางใหม่ (2026-11-02): Cloudflare Worker `worker/`** — พอร์ต Router/UseCases/Repositories/Entities เป็น JS module
+ต่อ DB ผ่าน Hyperdrive · เปิดใช้เมื่อตั้ง `WORKER_API_URL` ใน `DEMO/config.js` (ว่าง = GAS ทั้งหมดเหมือนเดิม)
+- คำสั่งที่ใช้ Drive (`generateDocument` / `createTicket` / `deleteTempPdf`) ไป GAS เสมอ (`FT_GAS_ONLY` ใน `common.js`)
+- **ลอจิก/SQL มีสองชุด** (`gas/*.gs` กับ `worker/src/*.js`) — แก้ฝั่งหนึ่งต้องแก้อีกฝั่ง แล้วรัน `tests/` ทั้งสองแบบ
+  (`/tests/` = GAS · `/tests/?target=worker` = Worker) · ACL อยู่ทั้ง `gas/ApiRouter.gs` และ `worker/src/api.js`
+- Worker ไม่มีแคชผลอ่าน และอ่าน role จาก DB ทุกคำขอ · Hyperdrive ต้องสร้างแบบ `--caching-disabled`
+- วิธีตั้งค่า/deploy: [worker/README.md](worker/README.md)
+
 **โฟลเดอร์แบ่งตามปลายทางที่ deploy** (ดูรายละเอียดใน [README.md](README.md))
 - `DEMO/` → ลากทั้งโฟลเดอร์อัป **Cloudflare Worker**
 - `gas/` → ก๊อปวางใน **Google Apps Script editor** ทีละไฟล์
@@ -333,15 +341,16 @@ SVG `preserveAspectRatio` แบบ meet จะย่อ **ทั้งภาพ
 
 ## 6. Deploy
 
-**deploy 2 ที่ แยกกันคนละรอบ** — แก้โฟลเดอร์ไหน ก็ deploy เฉพาะปลายทางนั้น
+**deploy แยกตามโฟลเดอร์** — แก้โฟลเดอร์ไหน ก็ deploy เฉพาะปลายทางนั้น
 
 | แก้ที่ | ไปที่ | วิธี |
 |---|---|---|
 | `DEMO/` | Cloudflare Worker `fast-ticket-app` | ลากทั้งโฟลเดอร์อัปบน dashboard (ต้องครบ 9 ไฟล์ รวม `theme.js`) |
 | `gas/` | Google Apps Script | ก๊อปวางในตัว editor ทุกไฟล์ (ยกเว้น `Code.gs`) → **Deploy → New version** (กด Save เฉยๆ ไม่พอ) |
+| `worker/` | Cloudflare Worker `fast-ticket-api` | `npx wrangler deploy` ในโฟลเดอร์ `worker/` (ต้องมี Node.js — ดู `worker/README.md`) |
 
 - Live: <https://fast-ticket-app.darkness7256.workers.dev/>
-- config ของ Worker อยู่ **นอก repo** ทั้งหมด — ไม่มี `wrangler.toml`
+- config ของ Worker หน้าเว็บ (`fast-ticket-app`) อยู่ **นอก repo** · ของ API อยู่ที่ `worker/wrangler.jsonc`
 - Script Properties ที่ GAS ต้องมี: `LIFF_CHANNEL_ID` (Channel ID ของ LINE Login
   channel ไม่ใช่ LIFF ID เต็ม) · `CHANNEL_ACCESS_TOKEN` (เฉพาะตอนตั้ง rich menu)
 

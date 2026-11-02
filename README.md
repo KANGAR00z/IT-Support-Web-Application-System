@@ -55,6 +55,8 @@ IT-Support-Web-Application-System/
 │   ├── richmenu-setup.gs สคริปต์ตั้ง rich menu (รันมือครั้งเดียว)
 │   └── Code.gs           🔒 รหัสผ่าน DB — gitignore ไว้ ไม่มีในรีโป
 │
+├── worker/          → API บน Cloudflare Workers (ทางใหม่ เร็วกว่า GAS) — วิธีทำดู worker/README.md
+│
 ├── sql/             → รันมือใน Supabase SQL Editor (ชื่อไฟล์ขึ้นต้นด้วยวันที่ = ลำดับที่รัน)
 │   ├── set-admin.sql                 ตั้ง Role ให้บัญชีแรกเป็น Admin
 │   ├── 2026-10-01-hotfix.sql         sequence ของ id · ชื่อสาขา · NOT NULL · index

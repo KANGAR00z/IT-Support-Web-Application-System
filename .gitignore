@@ -18,5 +18,10 @@ Thumbs.db
 # Netlify local
 .netlify/
 
+# Cloudflare Worker (worker/) — ติดตั้ง/สร้างใหม่ได้จาก package.json · .dev.vars เก็บรหัส DB สำหรับรันในเครื่อง
+node_modules/
+.wrangler/
+.dev.vars
+
 # ไฟล์ส่งงานรายวิชา (มีชื่อ/รหัสนักศึกษา) — repo เป็น public จึงเก็บไว้ในเครื่องเท่านั้น
 deliverables/

@@ -18,7 +18,10 @@
 python -m http.server 8770
 ```
 
-เปิด <http://localhost:8770/tests/> รอ ~5-10 วินาที บรรทัดสุดท้ายจะขึ้น `PASS: 82/82 checks passed`
+เปิด <http://localhost:8770/tests/> รอ ~5-10 วินาที บรรทัดสุดท้ายจะขึ้น `PASS: 102/102 checks passed` (GAS)
+
+ทดสอบ Worker (`worker/src`) ด้วยข้อมูลและรายการตรวจชุดเดียวกัน: <http://localhost:8770/tests/?target=worker>
+→ `PASS: 96/96` (น้อยกว่าเพราะการอัปโหลดรูปตอนแจ้งซ่อมอยู่ที่ GAS เท่านั้น)
 (ถ้ามีข้อไม่ผ่านจะขึ้น `FAIL` พร้อมรายการที่ได้ / ที่ควรได้)
 
 > GAS JDBC ทำงานแบบ synchronous แต่ PGlite เป็น async — `index.html` จึงรัน `doPost` ซ้ำจนทุก query

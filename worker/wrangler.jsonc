@@ -1,0 +1,23 @@
+// FAST TICKET API บน Cloudflare Workers — วิธีตั้งค่า/deploy ดู worker/README.md
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "fast-ticket-api",
+  "main": "src/index.js",
+  "compatibility_date": "2025-06-01",
+  // ไดรเวอร์ postgres ใช้ API ของ Node (net/tls) — Workers รองรับผ่าน flag นี้
+  "compatibility_flags": ["nodejs_compat"],
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE",
+      // ID ที่ได้จากคำสั่ง "npx wrangler hyperdrive create ..." (README ขั้นที่ 3) — ไม่ใช่ความลับ
+      "id": "ใส่_HYPERDRIVE_ID_ตรงนี้"
+    }
+  ],
+  "vars": {
+    // Channel ID ของ LINE Login channel ที่มี LIFF app ทั้ง 3 ตัว (= ตัวเลขหน้า "-" ของ LIFF ID ใน DEMO/config.js)
+    // ต้องตรงกับ Script Property "LIFF_CHANNEL_ID" ของ GAS
+    "LIFF_CHANNEL_ID": "2010392375"
+  },
+  // ดู log ย้อนหลังได้ใน Cloudflare dashboard -> Workers -> fast-ticket-api -> Logs
+  "observability": { "enabled": true }
+}

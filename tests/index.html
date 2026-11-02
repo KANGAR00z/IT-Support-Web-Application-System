@@ -186,11 +186,17 @@ window.DriveApp = { Access: { ANYONE_WITH_LINK: 1 }, Permission: { VIEW: 1 },
 window.ContentService = { createTextOutput: (s) => ({ setMimeType() { return JSON.parse(s); } }), MimeType: { JSON: 1, TEXT: 2 } };
 
 // ---------- load the backend ----------
-const files = ['Entities.gs', 'Infrastructure.gs', 'Repositories.gs', 'UseCases.gs', 'ApiRouter.gs'];
-const src = (await Promise.all(files.map(f => fetch('../gas/' + f + '?t=' + Date.now()).then(r => r.text())))).join('\n;\n');
-const el = document.createElement('script');
-el.textContent = src;
-document.head.appendChild(el);
+// ?target=worker = ทดสอบ worker/src (Cloudflare Worker) ด้วยข้อมูลและรายการตรวจชุดเดียวกัน
+// คำสั่งที่ใช้ Drive (createTicket ฯลฯ) อยู่ที่ GAS เท่านั้น — tests.js ข้ามส่วนนั้นเอง
+window.TARGET = new URLSearchParams(location.search).get('target') === 'worker' ? 'worker' : 'gas';
+document.title += ' · ' + window.TARGET;
+if (window.TARGET === 'gas') {
+  const files = ['Entities.gs', 'Infrastructure.gs', 'Repositories.gs', 'UseCases.gs', 'ApiRouter.gs'];
+  const src = (await Promise.all(files.map(f => fetch('../gas/' + f + '?t=' + Date.now()).then(r => r.text())))).join('\n;\n');
+  const el = document.createElement('script');
+  el.textContent = src;
+  document.head.appendChild(el);
+}
 
 // one HTTP request -> doPost, rerunning until every query it needs has a result
 window.gasCall = async (bodyText) => {
@@ -211,8 +217,18 @@ window.gasCall = async (bodyText) => {
   throw new Error('too many rounds');
 };
 window.api = async (action, data, sub) => window.gasCall(JSON.stringify({ action, idToken: sub || window.__sub, data: data || {} }));
+if (window.TARGET === 'worker') {
+  // PGlite ห่อเป็นรูปแบบเดียวกับ worker/src/db.js (q / tx) · token จำลอง: idToken = LINE userId (เหมือน UrlFetchApp ข้างบน)
+  const W = await import('../worker/src/api.js?t=' + Date.now());
+  const pg = (c) => ({
+    q: async (text, params = []) => (await c.query(text, params)).rows,
+    tx: (fn) => c.transaction(async (t) => { const r = await fn(pg(t)); if (r && r.status === 'error') await t.rollback(); return r; }),
+  });
+  window.api = (action, data, sub) => W.handle(JSON.stringify({ action, idToken: sub || window.__sub, data: data || {} }),
+    { db: pg(db), verifyToken: async (tok) => ({ ok: true, userId: tok }) });
+}
 window.engineReady = true;
-log('engine ready — running tests.js …');
+log('engine ready (' + window.TARGET + ') — running tests.js …');
 const t0 = performance.now();
 try {
   const r = (await import('./tests.js?t=' + Date.now())).default;

@@ -214,8 +214,59 @@ await checkKb('size 5 p4', { pageSize: 5, page: 4 });
   eq('restored', back.columns.map(c => c.all), before.columns.map(c => c.all));
 }
 
-// ---------- แจ้งซ่อม: เบอร์ภายใน + รูปอาการเสีย (ท้ายสุด — เพิ่มตั๋วแล้วยอดที่ตรวจข้างบนจะเปลี่ยน) ----------
+// ---------- คำสั่งเขียนอื่นๆ (ทั้ง GAS และ Worker) — คืนค่าเดิมทุกครั้ง ----------
 {
+  // บทบาท: ห้ามลดแอดมินคนสุดท้าย · IT แก้บทบาทไม่ได้ · บัญชีที่ไม่มีในระบบถูกปฏิเสธ
+  const last = await api('updateUserRole', { userId: 'Uadmin', role: 'it' });
+  ok('keep last admin', last.status === 'error' && /แอดมินอย่างน้อย 1 คน/.test(last.message));
+  const byIt = await api('updateUserRole', { userId: 'Ustaff001', role: 'it' }, 'Uit');
+  ok('IT cannot change roles', byIt.status === 'error' && /ไม่มีสิทธิ์/.test(byIt.message));
+  const up = await api('updateUserRole', { userId: 'Ustaff001', role: 'it' });
+  const its = await api('getUsers', { role: 'it', pageSize: 50 });
+  ok('role changed', up.status === 'success' && its.users.some(u => u.userId === 'Ustaff001'));
+  ok('role restored', (await api('updateUserRole', { userId: 'Ustaff001', role: 'staff' })).status === 'success');
+  const nobody = await api('getBoard', { pages: { 1: 1, 2: 1, 3: 1 } }, 'Unobody');
+  ok('unknown account rejected', nobody.status === 'error' && /ไม่พบบัญชีในระบบ/.test(nobody.message));
+
+  // ข้อมูลหลัก: เพิ่ม -> ชื่อซ้ำ -> สาขาต้องขึ้นต้นด้วยชื่อพื้นที่ -> เปลี่ยนชื่อพื้นที่ (สาขาตาม) -> ลบที่ยังใช้อยู่ไม่ได้ -> ลบ
+  const M = (action, type, extra) => api(action, Object.assign({ apiVersion: 2, type }, extra));
+  const add = await M('addMasterItem', 'office', { item: { name: 'สำนักงานทดสอบ', province: 'ทดสอบ', parentId: 1 } });
+  ok('master add ' + JSON.stringify(add), add.status === 'success' && add.id > 0);
+  ok('master duplicate name', (await M('addMasterItem', 'office', { item: { name: 'สำนักงานทดสอบ', parentId: 1 } })).status === 'error');
+  const br = await M('addMasterItem', 'branch', { item: { name: 'สำนักงานทดสอบ สาขาหนึ่ง', officeId: add.id } });
+  ok('branch add', br.status === 'success');
+  ok('branch needs office prefix', (await M('addMasterItem', 'branch', { item: { name: 'สาขาลอยๆ', officeId: add.id } })).status === 'error');
+  const ren = await M('updateMasterItem', 'office', { id: add.id, item: { name: 'สำนักงานทดสอบใหม่', province: 'ทดสอบ', parentId: 1 } });
+  const md = await api('getMasterData', { withUsage: true });
+  ok('rename cascades to branches ' + ren.message, ren.status === 'success' &&
+    md.branches.some(b => b.id === br.id && b.name === 'สำนักงานทดสอบใหม่ สาขาหนึ่ง'));
+  ok('usage counted for admin', (md.offices.find(o => o.id === add.id) || {}).used === 1);
+  ok('cannot delete office in use', (await M('deleteMasterItem', 'office', { id: add.id })).status === 'error');
+  ok('delete branch', (await M('deleteMasterItem', 'branch', { id: br.id })).status === 'success');
+  ok('delete office', (await M('deleteMasterItem', 'office', { id: add.id })).status === 'success');
+  ok('stale page rejected', (await api('deleteMasterItem', { type: 'office', id: 1 })).status === 'error');
+
+  // ประวัติ (KB): เพิ่ม -> แก้ -> ลบ
+  const kb0 = (await api('getKnowledgeBase', { pageSize: 50 })).total;
+  ok('kb add', (await api('addKnowledgeArticle', { ticketId: 3, resolutionText: 'ทดสอบเพิ่มวิธีแก้' })).status === 'success');
+  const found = await api('getKnowledgeBase', { q: 'ทดสอบเพิ่มวิธีแก้' });
+  const a = found.articles[0] || {};
+  ok('kb listed', found.total === 1 && a.ticketId === 3 && a.author === user('Uadmin').name);
+  ok('kb update', (await api('updateKnowledgeArticle', { kbId: a.id, resolutionText: 'แก้แล้ว' })).status === 'success');
+  ok('kb delete', (await api('deleteKnowledgeArticle', { kbId: a.id })).status === 'success');
+  eq('kb count back', (await api('getKnowledgeBase', { pageSize: 50 })).total, kb0);
+}
+
+// ---------- แจ้งซ่อม: เบอร์ภายใน + รูปอาการเสีย (ท้ายสุด — เพิ่มตั๋วแล้วยอดที่ตรวจข้างบนจะเปลี่ยน) ----------
+if (window.TARGET === 'worker') {
+  // createTicket ใช้ Drive จึงอยู่ที่ GAS — เพิ่มตั๋วตรงใน DB แล้วดูว่า Worker ส่งเบอร์/รูปออกมาครบ
+  await window.db.query(`INSERT INTO "TICKET" ("LINE_User_ID", "Office_ID", "Category_ID", "Issue_Detail", "Status", "Contact_Phone", "Image_URL")
+    VALUES ('Ustaff005', 2, 2, 'ทดสอบเบอร์และรูป', 1, '64305', 'https://drive.google.com/file/d/F0000000000000000000000000000001/view')`);
+  const t = (await api('getMyTickets', {}, 'Ustaff005')).tickets.find(x => x.detail === 'ทดสอบเบอร์และรูป') || {};
+  eq('phone + photo from DB', [t.phone, /^https:\/\/drive\.google\.com\//.test(t.imageUrl)], ['64305', true]);
+  const gasOnly = await api('createTicket', {}, 'Ustaff005');
+  ok('createTicket stays on GAS', gasOnly.status === 'error' && /ไม่พบคำสั่ง/.test(gasOnly.message));
+} else {
   const base = { apiVersion: 2, displayName: 'ทดสอบ แจ้งใหม่', position: 'ทดสอบ', branchId: 20, departmentId: 1, categoryId: 2,
     issueDetail: 'ทดสอบเบอร์และรูป', docPdfUrl: null };
   const img = btoa('fake jpeg bytes');
