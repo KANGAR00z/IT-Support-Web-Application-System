@@ -19,8 +19,13 @@
 // ชื่อ "branch" เปลี่ยนความหมายจาก พื้นที่ -> สาขา จึงต้องแยกหน้าเว็บรุ่นเก่าที่ยังค้างในเครื่องออกให้ได้
 const API_VERSION = 2;
 
-// โฟลเดอร์เก็บ PDF ใน Drive (ไม่ใช่ secret)
+// โฟลเดอร์เก็บ PDF + รูปอาการเสียใน Drive (ไม่ใช่ secret)
 const FOLDER_ID = '1wQSNqJ0QHgm9hKaVf4sm0_fIXprEpSsc';
+
+// รูปอาการเสียที่แนบมากับการแจ้งซ่อม — หน้าเว็บย่อเป็น JPEG ด้านยาว ≤1600px ก่อนส่ง (~0.2-0.6MB)
+// เพดานนี้กันคนยิง API ตรงด้วยไฟล์ใหญ่ · ชนิดไฟล์ -> นามสกุลที่ใช้ตั้งชื่อไฟล์ใน Drive
+const IMAGE_MAX_BYTES = 3 * 1024 * 1024;
+const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
 // Status: 1 = รอรับเรื่อง · 2 = กำลังดำเนินการ · 3 = เสร็จสิ้น (ผูกกับคอลัมน์บอร์ดใน admin.js)
 const TICKET_STATUS = { OPEN: 1, IN_PROGRESS: 2, CLOSED: 3 };
@@ -39,6 +44,12 @@ function toId_(v) {
 
 function cleanText_(v) {
   return String(v === undefined || v === null ? '' : v).trim();
+}
+
+// เบอร์ภายในเก็บเป็นข้อความ (มี 0 นำหน้า / ขีด / "ต่อ") — แค่ตัดความยาว · '-' = ไม่ได้กรอก
+function cleanPhone_(v) {
+  const s = cleanText_(v).slice(0, 30);
+  return s === '-' ? '' : s;
 }
 
 function isTicketStatus_(s) {

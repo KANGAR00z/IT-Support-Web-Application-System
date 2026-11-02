@@ -78,7 +78,6 @@ DB อยู่โตเกียว (`ap-northeast-1` pooler :6543) แต่ G
   - หน้าเว็บจำหน้าที่โหลดแล้ว 60 วิ + โหลดหน้าถัดไปรอไว้ (`fetchPage`/`prefetchPage` ใน `admin.js`) · ล้างทุกครั้งที่แก้ข้อมูล
   - ผลค้นหา (มีคำค้น) ไม่แคชฝั่ง GAS · ชื่อแคชของรายการที่มีพารามิเตอร์ใช้ `argsKey_` (MD5 — key ยาวได้ ≤250 ตัวอักษร)
   - "งานของฉัน" กรองด้วย `IT_In_Charge = auth.userId` ฝั่ง server (ไม่เทียบชื่อ) — userId อยู่ในชื่อแคชเอง
-  - โหมดตัวอย่างแบ่งหน้าในเครื่อง (`mockBoard`/`mockUsersPage`/`mockKbPage`) ไม่ยิง backend ที่เพิ่งล้มซ้ำทุกครั้งที่เปลี่ยนหน้า
 - **connection เดียวต่อ request** (`REQ_CONN_` ใน `Infrastructure.gs`) — `withConn_` ไม่ปิด connection เอง
   `doPost` ปิดใน `finally` · ห้ามเรียก `getDbConnection()` ตรงๆ ใน use case/repository
   · `withTx_` ต้องคืน `autoCommit(true)` เสมอ เพราะ connection ถูกใช้ต่อ
@@ -116,7 +115,28 @@ DB อยู่โตเกียว (`ap-northeast-1` pooler :6543) แต่ G
   สีหมวดหมู่, ป้ายบทบาท) ใช้สีตรงๆ ห้ามเปลี่ยนเป็น brand · เขียว LINE `#06C755` เฉพาะปุ่ม LINE Login
 - แจ้งผล/ถามยืนยัน: `ftToast(msg, 'info'|'success'|'error')`, `await ftConfirm(msg, {title, danger})`,
   `ftAlert` — **ห้ามใช้ `alert()`/`confirm()`** · โหลดครั้งแรกใช้ `ftSkeleton('card'|'row', n)` แทนวงกลมหมุน
-- ฟอร์มแจ้งซ่อมจำข้อมูลผู้แจ้งใน `localStorage.ft_reporter` (ผูก LINE userId) · ปุ่ม Debug ซ่อน เปิดด้วย `?debug=1`
+- **โหลดไม่สำเร็จ = หน้าสถานะ ไม่มีข้อมูลตัวอย่าง (2026-11-02)** — `ftErrorState(el, err, {onRetry, onLogin, lineId, where})`
+  วาดไอคอน + สาเหตุ + คำแนะนำตามประเภท (`FT_ERR`: offline/timeout/network/auth/nologin/liff/noaccount/forbidden/outdated/server)
+  + ปุ่มลองใหม่ + "รายละเอียดสำหรับผู้ดูแลระบบ" แบบพับ (ข้อความดิบ — ในแอป LINE เปิด console ไม่ได้)
+  - ประเภทมาจาก `err.ftKind` (`ftErr(msg, kind)` ใน `ftFetchJson_`/`ftCallBackend`) ไม่มีก็เดาจากข้อความ backend (`ftErrorKind`)
+    — **ข้อความ ACL/เวอร์ชันใน GAS ที่เปลี่ยนต้องแก้ regex ใน `ftErrorKind` ด้วย**
+  - ขึ้นหน้าสถานะ **แม้มีข้อมูลเก่าในแคช** (ข้อมูลค้างทำให้เข้าใจผิดว่าเป็นปัจจุบัน) · กลับมาออนไลน์ = โหลดใหม่เอง
+  - admin: `showViewError(view, e, retry)`/`clearViewError(view)` — ใส่ `.has-error` ที่ view ซ่อนลูกอื่นทั้งหมด
+    เหลือ `.view-error` · flag `xLoaded` ตั้งเฉพาะตอนสำเร็จ (กลับมาหน้านั้น = ลองใหม่) · `#authBanner` ใช้กับ "บันทึก" ไม่สำเร็จเท่านั้น
+  - history: `#errorBox` → `showError(e)` (รับ Error หรือข้อความ) · LIFF พังตอนเปิดหน้า = ประเภท `liff` ลองใหม่ด้วย reload
+- ฟอร์มแจ้งซ่อมจำข้อมูลผู้แจ้งใน `localStorage.ft_reporter` และข้อความที่พิมพ์ค้างใน `ft_draft` (ผูก LINE userId ทั้งคู่
+  · จำทันทีที่พิมพ์ · ลบ draft เมื่อแจ้งสำเร็จ) · ปุ่ม Debug ซ่อน เปิดด้วย `?debug=1`
+  - ตัวเลือกสาขา/ส่วน/หมวดต้องมี `<option value="" disabled selected>-- เลือก --</option>` เสมอ (ทั้งใน HTML และ `applyMasterData`)
+    — ไม่มี `selected` แล้ว `form.reset()` จะเลือกตัวแรกที่กดได้ให้เอง (เคยทำให้ตั๋วใบที่สองเป็น "ฮาร์ดแวร์" โดยไม่ได้เลือก)
+  - ตรวจข้อมูลด้วย `validateAll()` บอกใต้ช่อง (`#<id>Err`) ไม่ใช้ toast / `reportValidity()`
+  - รูปอาการเสีย: ย่อในเครื่อง (ด้านยาว ≤1600px JPEG 80%) ส่ง base64 ไปกับ `createTicket` (`imageData`/`imageType`)
+    → server ตรวจชนิด/ขนาด (`IMAGE_TYPES`, `IMAGE_MAX_BYTES` 3MB) แล้วเก็บใน Drive โฟลเดอร์เดียวกับ PDF → `TICKET.Image_URL`
+    **server ไม่รับ URL รูปจาก client** · ตั๋วบันทึกไม่สำเร็จ = ทิ้งรูปลงถังขยะ · `deleteTempPdf` ห้ามลบไฟล์ที่ตั๋วใช้เป็นรูปด้วย
+  - เบอร์ภายในเก็บที่ `TICKET.Contact_Phone` (เบอร์ "ตอนแจ้ง" ตรงกับในเอกสาร) — ตั๋วก่อน 2026-11-02 มีแค่ใน PDF
+- คอนโซล admin: กดการ์ด = แผงรายละเอียด (`openTicket` / `syncTicketDrawer` ตามข้อมูลใหม่ทุกครั้งที่ `render()`)
+  · มือถือแสดงบอร์ดทีละคอลัมน์ผ่านแท็บสถานะ (`#boardTabs`, `.is-mobile-active`) · ตัวกรองพับในปุ่ม "ตัวกรอง"
+  · ซ่อนสิ่งที่ ACL ไม่ยอมให้ทำตามบทบาท (`applyRoleUI` / `roleKnownNotAdmin`) — **ยังไม่รู้บทบาท = แสดงไว้** (server ตรวจซ้ำ)
+    ถ้าเพิ่ม action ที่จำกัดบทบาทใน `ACL` ต้องซ่อนปุ่มฝั่งหน้าเว็บให้ตรงกันด้วย
 
 - `config.js` — `MY_LIFF_ID`, `ADMIN_LIFF_ID`, `HISTORY_LIFF_ID`, `GAS_API_URL`
   **แต่ละหน้าต้อง `liff.init` ด้วย LIFF ID ของตัวเอง** — ใช้ ID ของหน้าอื่นจะ login ได้แต่
@@ -303,6 +323,7 @@ SVG `preserveAspectRatio` แบบ meet จะย่อ **ทั้งภาพ
 | `.app-w` (max-width 640px) ใน `index.html` | ฟอร์มออกแบบมาสำหรับมือถือ ปล่อยเต็มจอ 1920px จะอ่านยากมาก |
 | `.main-scroll { scrollbar-gutter: stable both-edges }` | scrollbar กินความกว้างข้างเดียว ทำให้ฟอร์มเยื้องจากแถบปุ่ม ~7px |
 | `h-[100dvh]` | กัน browser chrome ของมือถือกินพื้นที่ |
+| หน้า admin ธีมขาว minimal (2026-10-22) | สีพื้น/เส้น/เงา/ตัวอักษรรอง เป็น token บน `.viz-root` ใน `admin.html` (`--page`, `--line`, `--shadow-card`, `--ink-muted` ≥4.5:1) — ปรับที่เดียว · ฟอนต์ IBM Plex Sans Thai เฉพาะ admin · สีสถานะ `--st-*` และ ramp แผนที่ `--seq-*` ผ่าน validator แล้ว ห้ามเปลี่ยนตามอารมณ์ · คอนเทนเนอร์หน้าใช้ `flex gap` ไม่ใช่ `space-y` (space-y เว้นที่ให้แถบเตือนที่ซ่อนอยู่) |
 | board column `md:max-w-none` | ถ้าไม่ปลด `max-w` ที่ `md` มันจะทับ `md:w-[320px]` ทำให้เดสก์ท็อปเลื่อนแนวนอนโดยไม่จำเป็น |
 
 **กับดัก:** ใน `index.html` มีจุดที่ JS เขียนทับ `btn.className` ทั้งก้อน — string ในนั้น

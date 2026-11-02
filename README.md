@@ -62,8 +62,9 @@ IT-Support-Web-Application-System/
 │   ├── 2026-10-06-section.sql        ตาราง SECTION (ส่วน) + TICKET/USER.Section_ID
 │   ├── 2026-10-09-rename-org-tables.sql  BRANCH→EXCISE_OFFICE, DEPARTMENT→BRANCH,
 │   │                                 SECTION→DEPARTMENT + ยกเลิกงาน (Deleted_At)
-│   └── 2026-10-10-org-hierarchy.sql  ภาค 9 เป็นแม่ของพื้นที่ · ชื่อสาขาเต็ม · ตัวเลือกสำนักงานพื้นที่
-│                                     (ทุกไฟล์รันไปแล้ว · ไฟล์ก่อน 10-09 ใช้ชื่อตารางเดิม ห้ามรันซ้ำ)
+│   ├── 2026-10-10-org-hierarchy.sql  ภาค 9 เป็นแม่ของพื้นที่ · ชื่อสาขาเต็ม · ตัวเลือกสำนักงานพื้นที่
+│   │                                 (ไฟล์ข้างบนรันไปแล้ว · ไฟล์ก่อน 10-09 ใช้ชื่อตารางเดิม ห้ามรันซ้ำ)
+│   └── 2026-11-02-ticket-phone.sql   TICKET.Contact_Phone (เบอร์ภายในตอนแจ้ง) — รันก่อน deploy GAS รุ่นนี้
 │
 ├── docs/            → เอกสารระบบ (ไม่ได้ deploy)
 │   ├── FAST_TICKET_CRUD_Modules.docx        CRUD / ACL / ฐานข้อมูล

@@ -28,6 +28,8 @@
     .status-prog { background: #dbeafe; color: #1e40af; }
     .status-done { background: #d1fae5; color: #065f46; }
     .status-cancel { background: #f1f5f9; color: #64748b; text-decoration: line-through; }
+    /* ตัวเลขสรุปกดเพื่อกรองได้ — ตัวที่เลือกอยู่มีกรอบสีแบรนด์ */
+    .kpi-tile[aria-pressed="true"] { border-color: var(--brand-500); box-shadow: 0 0 0 1px var(--brand-500); }
   </style>
 </head>
 <body class="flex flex-col h-[100dvh] overflow-hidden">
@@ -39,9 +41,9 @@
     </div>
     <div class="flex items-center gap-1.5 shrink-0">
       <button id="refreshBtn" title="โหลดใหม่" aria-label="โหลดใหม่" class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-slate-100 active:bg-slate-200 text-slate-500"><span data-icon="refresh-cw" data-icon-class="w-5 h-5"></span></button>
-      <div class="flex items-center gap-2 bg-slate-100 rounded-full pl-1.5 pr-2.5 py-1.5 min-h-[40px]">
+      <div class="flex items-center gap-2 bg-slate-100 rounded-full pl-1.5 pr-1.5 min-[400px]:pr-2.5 py-1.5 min-h-[40px]">
         <span class="w-7 h-7 rounded-full bg-brand-600 text-white text-xs flex items-center justify-center shrink-0 overflow-hidden" id="userAvatar">?</span>
-        <span id="userName" class="text-slate-600 text-sm font-medium truncate max-w-[6rem]">...</span>
+        <span id="userName" class="hidden min-[400px]:inline text-slate-600 text-sm font-medium truncate max-w-[6rem]">...</span>
       </div>
     </div>
   </header>
@@ -68,11 +70,9 @@
     <div class="text-slate-400 text-xs mt-4">หรือเปิดผ่านแอป LINE เพื่อเข้าใช้งานอัตโนมัติ</div>
   </div>
 
-  <div id="errorBox" class="hidden flex-1 flex flex-col items-center justify-center p-10 text-center">
-    <div class="w-14 h-14 rounded-full bg-amber-50 text-amber-600 flex items-center justify-center mb-3"><span data-icon="circle-alert" data-icon-class="w-7 h-7"></span></div>
-    <div class="text-slate-600 font-semibold mb-1">โหลดข้อมูลไม่สำเร็จ</div>
-    <div id="errorMsg" class="text-slate-400 text-sm mb-4"></div>
-    <button id="retryBtn" class="bg-brand-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-brand-700">ลองใหม่</button>
+  <!-- โหลดไม่สำเร็จ: ไอคอน + สาเหตุ + คำแนะนำ ตามประเภทปัญหา (ftErrorState ใน common.js — ชุดเดียวกับหน้า admin) -->
+  <div id="errorBox" class="hidden flex-1 overflow-y-auto">
+    <div id="errorState" class="app-w px-4"></div>
   </div>
 
   <div id="content" class="hidden flex-1 overflow-y-auto">
@@ -83,22 +83,28 @@
         <span id="staleIcon" class="shrink-0"></span><span id="staleText" class="min-w-0"></span>
       </button>
 
-      <div class="grid grid-cols-3 gap-2">
-        <div class="bg-white rounded-xl p-3 text-center border border-slate-100">
-          <div class="text-xs text-amber-600 font-medium">รอรับเรื่อง</div>
+      <!-- กดตัวเลขเพื่อดูเฉพาะสถานะนั้น (กดซ้ำ = ดูทั้งหมด) -->
+      <div class="grid grid-cols-3 gap-2" role="group" aria-label="กรองตามสถานะ">
+        <button type="button" data-status="1" aria-pressed="false" class="kpi-tile bg-white rounded-xl p-3 text-center border border-slate-100 transition-shadow">
+          <div class="text-xs text-amber-700 font-medium">รอรับเรื่อง</div>
           <div id="kpiOpen" class="text-xl font-bold text-slate-800 mt-0.5">0</div>
-        </div>
-        <div class="bg-white rounded-xl p-3 text-center border border-slate-100">
-          <div class="text-xs text-blue-600 font-medium">กำลังดำเนินการ</div>
+        </button>
+        <button type="button" data-status="2" aria-pressed="false" class="kpi-tile bg-white rounded-xl p-3 text-center border border-slate-100 transition-shadow">
+          <div class="text-xs text-blue-700 font-medium">กำลังดำเนินการ</div>
           <div id="kpiProg" class="text-xl font-bold text-slate-800 mt-0.5">0</div>
-        </div>
-        <div class="bg-white rounded-xl p-3 text-center border border-slate-100">
-          <div class="text-xs text-emerald-600 font-medium">เสร็จสิ้น</div>
+        </button>
+        <button type="button" data-status="3" aria-pressed="false" class="kpi-tile bg-white rounded-xl p-3 text-center border border-slate-100 transition-shadow">
+          <div class="text-xs text-emerald-700 font-medium">เสร็จสิ้น</div>
           <div id="kpiDone" class="text-xl font-bold text-slate-800 mt-0.5">0</div>
-        </div>
+        </button>
       </div>
 
-      <div id="ticketList"></div>
+      <div id="filterNote" class="hidden flex items-center justify-between gap-2 text-sm text-slate-600 px-1">
+        <span id="filterText"></span>
+        <button type="button" id="filterClear" class="text-brand-700 font-medium px-2 min-h-[36px]">ดูทั้งหมด</button>
+      </div>
+
+      <div id="ticketList" class="space-y-2.5"></div>
 
       <div id="emptyState" class="hidden py-12 text-center">
         <div class="w-14 h-14 mx-auto rounded-full bg-slate-100 text-slate-400 flex items-center justify-center mb-3"><span data-icon="inbox" data-icon-class="w-7 h-7"></span></div>
@@ -106,6 +112,15 @@
         <div class="text-slate-400 text-xs mt-1">เมื่อคุณแจ้งซ่อม รายการจะปรากฏที่นี่</div>
       </div>
 
+    </div>
+  </div>
+
+  <!-- แจ้งซ่อมเรื่องใหม่ได้จากหน้านี้เลย (เดิมต้องออกไปหาที่ Rich Menu) -->
+  <div id="newBar" class="bg-white border-t border-slate-100 px-4 pt-3 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] safe-b">
+    <div class="app-w pb-3">
+      <a id="newTicketLink" href="index.html" class="w-full bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white font-bold text-base rounded-xl flex items-center justify-center gap-2 min-h-[52px]">
+        <span data-icon="plus" data-icon-class="w-5 h-5"></span>แจ้งซ่อมใหม่
+      </a>
     </div>
   </div>
 
@@ -140,15 +155,42 @@
 
     let myTickets = [];
     let expandedId = null;
+    let statusFilter = 0;   // 0 = ทั้งหมด · 1/2/3 = เฉพาะสถานะนั้น (กดที่ตัวเลขสรุป)
+
+    // งานที่ยังไม่เสร็จขึ้นก่อน (คนเปิดหน้านี้ส่วนใหญ่มาตามงานค้าง) -> เสร็จแล้ว -> ยกเลิก · ในกลุ่มเดียวกันใหม่สุดก่อน
+    const rankOf = (t) => t.cancelled ? 3 : (t.status === STATUS.CLOSED ? 2 : 1);
+    const byRelevance = (a, b) => rankOf(a) - rankOf(b) || (parseT(b.createdAt) || 0) - (parseT(a.createdAt) || 0) || b.id - a.id;
+
+    // แถบความคืบหน้า 3 ขั้น — สีตามสถานะปัจจุบัน
+    const STEP_COLOR = { 1: 'bg-amber-400', 2: 'bg-blue-500', 3: 'bg-emerald-500' };
+    function stepper(t) {
+      if (t.cancelled) return '';
+      const at = STATUS_LABEL[t.status] ? t.status : STATUS.OPEN;
+      return `<ol class="mt-2.5 flex gap-1.5" aria-label="ความคืบหน้า: ${STATUS_LABEL[at].text}">` +
+        ['แจ้งแล้ว', 'รับเรื่อง', 'เสร็จสิ้น'].map((s, i) => `
+          <li class="flex-1 min-w-0">
+            <div class="h-1.5 rounded-full ${i < at ? STEP_COLOR[at] : 'bg-slate-200'}"></div>
+            <div class="mt-1 text-xs truncate ${i < at ? 'text-slate-600 font-medium' : 'text-slate-400'}">${s}</div>
+          </li>`).join('') + '</ol>';
+    }
+    const detailRow = (label, value) => value
+      ? `<div class="flex gap-2 text-sm"><span class="text-slate-500 shrink-0 w-24">${label}</span><span class="text-slate-700 min-w-0 break-words">${value}</span></div>` : '';
 
     const callBackend = (action, data) => ftCallBackend(action, data);
 
-    function showError(msg) {
+    // e = Error จาก ftCallBackend (มีประเภทติดมา) หรือข้อความ (ปัญหาตอนเริ่ม LIFF)
+    function showError(e) {
+      if (!(e instanceof Error)) e = new Error(String(e || ''));
       $('loading').classList.add('hidden');
       $('content').classList.add('hidden');
       $('errorBox').classList.remove('hidden');
-      $('errorMsg').innerText = msg || '';
-      $('retryBtn').innerText = msg === FT_AUTH_EXPIRED_MSG ? 'เข้าสู่ระบบใหม่' : 'ลองใหม่';
+      setStale(null);
+      ftErrorState($('errorState'), e, {
+        onRetry: e.ftKind === 'liff' ? () => location.reload() : loadTickets,
+        onLogin: () => ftRelogin(true),
+        lineId: ownerId,
+        where: 'ประวัติการแจ้งซ่อม (ผู้แจ้ง)',
+      });
     }
 
     /* ---------- แคชในเครื่อง (stale-while-revalidate) ----------
@@ -173,15 +215,14 @@
       $('errorBox').classList.add('hidden');
       $('content').classList.remove('hidden');
     }
-    // kind: 'sync' = กำลังอัปเดต · 'fail' = อัปเดตไม่สำเร็จ (กดลองใหม่ได้) · null = ซ่อน
+    // kind: 'sync' = กำลังอัปเดต (โชว์ข้อมูลที่จำไว้ระหว่างรอ) · null = ซ่อน
+    // อัปเดตไม่สำเร็จไม่ใช้แถบนี้ — ขึ้นหน้าสถานะแทน (ข้อมูลเก่าอาจทำให้เข้าใจผิดว่าเป็นปัจจุบัน)
     function setStale(kind, text) {
       const bar = $('staleBar');
       bar.classList.toggle('hidden', !kind);
       if (!kind) return;
-      bar.className = 'w-full text-left text-xs rounded-lg px-3 py-2 flex items-center gap-2 border ' +
-        (kind === 'fail' ? 'bg-amber-50 border-amber-200 text-amber-800' : 'bg-brand-50 border-brand-100 text-brand-700');
-      $('staleIcon').innerHTML = icon(kind === 'fail' ? 'triangle-alert' : 'refresh-cw',
-        'w-3.5 h-3.5' + (kind === 'sync' ? ' animate-spin' : ''));
+      bar.className = 'w-full text-left text-xs rounded-lg px-3 py-2 flex items-center gap-2 border bg-brand-50 border-brand-100 text-brand-700';
+      $('staleIcon').innerHTML = icon('refresh-cw', 'w-3.5 h-3.5 animate-spin');
       $('staleText').innerText = text;
     }
 
@@ -209,12 +250,8 @@
         showContent();
         setStale(null);
       } catch (e) {
-        // มีของเก่าให้ดูอยู่แล้ว -> ไม่ล้างจอเป็นหน้า error แค่บอกว่ายังไม่อัปเดต (ยกเว้น login หมดอายุ ต้องให้เห็นปุ่ม)
-        if (cached && e.message !== FT_AUTH_EXPIRED_MSG) {
-          setStale('fail', 'อัปเดตไม่สำเร็จ: ' + e.message + ' · แตะเพื่อลองใหม่');
-        } else {
-          showError(e.message);
-        }
+        // หน้าสถานะแทนเสมอ แม้มีของที่จำไว้ (ข้อมูลเก่าอาจทำให้เข้าใจผิดว่าสถานะเป็นปัจจุบัน)
+        showError(e);
       } finally {
         loadingNow = false;
         $('refreshBtn').classList.remove('animate-spin');
@@ -223,18 +260,24 @@
 
     function renderTickets() {
       const live = myTickets.filter(t => !t.cancelled);   // งานที่ถูกยกเลิกไม่นับในตัวเลขสรุป
-      const open = live.filter(t => t.status === STATUS.OPEN).length;
-      const prog = live.filter(t => t.status === STATUS.IN_PROGRESS).length;
-      const done = live.filter(t => t.status === STATUS.CLOSED).length;
-      $('kpiOpen').innerText = open;
-      $('kpiProg').innerText = prog;
-      $('kpiDone').innerText = done;
+      const count = (s) => live.filter(t => t.status === s).length;
+      $('kpiOpen').innerText = count(STATUS.OPEN);
+      $('kpiProg').innerText = count(STATUS.IN_PROGRESS);
+      $('kpiDone').innerText = count(STATUS.CLOSED);
+      document.querySelectorAll('.kpi-tile').forEach(b => b.setAttribute('aria-pressed', String(+b.dataset.status === statusFilter)));
+
+      const shown = myTickets.filter(t => !statusFilter || (!t.cancelled && t.status === statusFilter)).sort(byRelevance);
+      $('filterNote').classList.toggle('hidden', !statusFilter);
+      if (statusFilter) $('filterText').innerText = 'แสดงเฉพาะ "' + STATUS_LABEL[statusFilter].text + '" · ' + shown.length + ' รายการ';
 
       const list = $('ticketList');
       list.innerHTML = '';
       $('emptyState').classList.toggle('hidden', myTickets.length > 0);
+      if (myTickets.length && !shown.length) {
+        list.innerHTML = '<div class="py-8 text-center text-sm text-slate-500">ไม่มีรายการในสถานะนี้</div>';
+      }
 
-      myTickets.forEach(t => {
+      shown.forEach(t => {
         const st = t.cancelled ? CANCELLED_LABEL : (STATUS_LABEL[t.status] || STATUS_LABEL[1]);
         const isExpanded = expandedId === t.id;
 
@@ -243,37 +286,46 @@
 
         let detailHtml = '';
         if (isExpanded) {
+          const thumb = ftDriveThumb(t.imageUrl, 600);
           detailHtml = `
-            <div class="px-4 pb-3.5 space-y-2 border-t border-slate-100 pt-3">
-              ${t.department ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">ส่วน:</span><span class="text-slate-600">${escapeHtml(t.department)}</span></div>` : ''}
-              ${t.branch ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">สังกัด:</span><span class="text-slate-600">${escapeHtml(t.branch)}</span></div>` : ''}
-              ${t.office && !t.branch ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">พื้นที่:</span><span class="text-slate-600">${escapeHtml(t.office)}</span></div>` : ''}
-              ${t.assignee ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">ผู้รับผิดชอบ:</span><span class="text-slate-600">${escapeHtml(t.assignee)}</span></div>` : ''}
-              ${t.acceptedAt ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">รับเรื่องเมื่อ:</span><span class="text-slate-600">${timeAgo(t.acceptedAt)}</span></div>` : ''}
-              ${t.closedAt ? `<div class="flex gap-2 text-xs"><span class="text-slate-400 shrink-0">ปิดงานเมื่อ:</span><span class="text-slate-600">${timeAgo(t.closedAt)}</span></div>` : ''}
+            <div id="tk-detail-${t.id}" class="px-4 pb-4 space-y-2 border-t border-slate-100 pt-3">
+              ${detailRow('แจ้งเมื่อ', escapeHtml(ftDate(t.createdAt)))}
+              ${detailRow('รับเรื่องเมื่อ', t.acceptedAt ? escapeHtml(ftDate(t.acceptedAt)) + (t.assignee ? ' · ' + escapeHtml(t.assignee) : '') : '')}
+              ${detailRow('เสร็จเมื่อ', t.closedAt ? escapeHtml(ftDate(t.closedAt)) : '')}
+              ${!t.acceptedAt ? detailRow('ผู้รับผิดชอบ', t.assignee ? escapeHtml(t.assignee) : '') : ''}
+              ${detailRow('สังกัด', escapeHtml(t.branch || t.office || ''))}
+              ${detailRow('ส่วน', escapeHtml(t.department || ''))}
               ${t.resolution ? `
-                <div class="mt-1">
-                  <div class="text-xs text-slate-400 mb-1">วิธีแก้ไข:</div>
+                <div class="pt-1">
+                  <div class="text-sm text-slate-500 mb-1">วิธีแก้ไข</div>
                   <div class="text-sm text-slate-700 bg-emerald-50 rounded-lg px-3 py-2 whitespace-pre-wrap">${escapeHtml(t.resolution)}</div>
                 </div>` : ''}
-              ${t.pdfUrl ? `<button data-pdf="${t.id}" class="mt-1 text-xs text-brand-600 hover:underline inline-flex items-center gap-1">${icon('file-text', 'w-3.5 h-3.5')}ดูเอกสาร</button>` : ''}
+              ${thumb ? `
+                <a href="${escapeHtml(t.imageUrl)}" target="_blank" rel="noopener" class="block pt-1 space-y-1.5">
+                  <img src="${escapeHtml(thumb)}" alt="รูปที่แนบตอนแจ้ง" loading="lazy" onerror="this.remove()" class="w-full max-h-56 object-cover rounded-lg border border-slate-200 bg-slate-100">
+                  <span class="inline-flex items-center gap-1.5 text-sm text-brand-700">${icon('camera', 'w-4 h-4')}รูปที่แนบตอนแจ้ง · เปิดดู${icon('external-link', 'w-3.5 h-3.5')}</span>
+                </a>` : ''}
+              ${t.pdfUrl ? `<button type="button" data-pdf="${t.id}" class="mt-1 inline-flex items-center gap-1.5 text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100 rounded-lg px-3 min-h-[40px]">${icon('file-text', 'w-4 h-4')}ดูเอกสาร</button>` : ''}
             </div>`;
         }
 
         el.innerHTML = `
-          <div class="ticket-header px-4 py-3 cursor-pointer active:bg-slate-50 transition-colors" data-id="${t.id}">
+          <button type="button" class="ticket-header w-full text-left px-4 py-3 active:bg-slate-50 transition-colors" aria-expanded="${isExpanded}" ${isExpanded ? `aria-controls="tk-detail-${t.id}"` : ''}>
             <div class="flex items-start justify-between gap-2 mb-1.5">
               <div class="flex items-center gap-2 flex-wrap min-w-0">
                 <span class="font-bold text-sm text-slate-800">${escapeHtml(t.code)}</span>
-                ${t.category ? `<span class="text-[11px] px-2 py-0.5 rounded-full ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}              </div>
-              <span class="text-[11px] px-2 py-0.5 rounded-full shrink-0 font-medium ${st.cls}">${st.text}</span>
+                ${t.category ? `<span class="text-xs px-2 py-0.5 rounded-full ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}
+                ${t.imageUrl ? `<span class="text-slate-400" title="มีรูปแนบ">${icon('camera', 'w-3.5 h-3.5')}</span>` : ''}
+              </div>
+              <span class="text-xs px-2 py-0.5 rounded-full shrink-0 font-medium ${st.cls}">${st.text}</span>
             </div>
             <p class="text-sm text-slate-600 leading-snug ${isExpanded ? '' : 'line-clamp-2'}">${escapeHtml(t.detail)}</p>
-            <div class="text-[11px] text-slate-400 mt-1.5 flex items-center gap-1">
-              ${icon('clock', 'w-3.5 h-3.5')} แจ้งเมื่อ ${timeAgo(t.createdAt)}
-              <span class="ml-auto text-slate-400">${icon('chevron-up', 'w-4 h-4 transition-transform ' + (isExpanded ? '' : 'rotate-180'))}</span>
+            ${stepper(t)}
+            <div class="text-xs text-slate-500 mt-2 flex items-center gap-1">
+              ${icon('clock', 'w-3.5 h-3.5')} แจ้งเมื่อ ${escapeHtml(ftWhen(t.createdAt))}
+              <span class="ml-auto inline-flex items-center gap-0.5 text-slate-500">${isExpanded ? 'ย่อ' : 'รายละเอียด'}${icon('chevron-up', 'w-4 h-4 transition-transform ' + (isExpanded ? '' : 'rotate-180'))}</span>
             </div>
-          </div>
+          </button>
           ${detailHtml}
         `;
 
@@ -292,6 +344,13 @@
       });
     }
 
+    document.querySelectorAll('.kpi-tile').forEach(b => b.addEventListener('click', () => {
+      const s = +b.dataset.status;
+      statusFilter = statusFilter === s ? 0 : s;
+      renderTickets();
+    }));
+    $('filterClear').addEventListener('click', () => { statusFilter = 0; renderTickets(); });
+
     function openPdf(t) {
       if (!t.pdfUrl) return;
       const preview = t.pdfUrl.replace('/view?usp=drivesdk', '/preview').replace('/view', '/preview');
@@ -305,12 +364,14 @@
     $('pdfModal').addEventListener('click', (e) => { if (e.target === $('pdfModal')) closePdf(); });
     $('refreshBtn').addEventListener('click', loadTickets);
     $('staleBar').addEventListener('click', loadTickets);
-    $('retryBtn').addEventListener('click', () => {
-      if ($('errorMsg').innerText === FT_AUTH_EXPIRED_MSG) ftRelogin(true);
-      else loadTickets();
-    });
+    // เน็ตกลับมาระหว่างค้างอยู่ที่หน้าสถานะ -> ลองใหม่เอง (ตามที่หน้าสถานะบอกผู้ใช้ไว้)
+    window.addEventListener('online', () => { if (!$('errorBox').classList.contains('hidden')) loadTickets(); });
+
+    // LIFF -> LIFF ต้องผ่าน liff.line.me ไม่งั้นหน้าฟอร์มได้ token ของ LIFF app ตัวนี้แทน
+    $('newTicketLink').href = MY_LIFF_ID ? 'https://liff.line.me/' + MY_LIFF_ID : 'index.html';
 
     function showLogin() {
+      $('newBar').classList.add('hidden');
       $('loading').classList.add('hidden');
       $('content').classList.add('hidden');
       $('errorBox').classList.add('hidden');
@@ -326,13 +387,13 @@
         if (!liff.isLoggedIn()) {
           // ในแอป LINE login อัตโนมัติตอน init เสมอ — ถ้าไม่ แปลว่าเปิดผ่าน LIFF app ตัวอื่น
           // และ liff.login() ใช้ในแอป LINE ไม่ได้ (ค้างหน้าโหลดตลอด) จึงบอกสาเหตุแทน
-          if (liff.isInClient()) showError('LIFF ID ไม่ตรงกับ LIFF app ที่เปิดหน้านี้ — ตรวจ HISTORY_LIFF_ID ใน config.js');
+          if (liff.isInClient()) showError(ftErr('LIFF ID ไม่ตรงกับ LIFF app ที่เปิดหน้านี้ — ตรวจ HISTORY_LIFF_ID ใน config.js', 'liff'));
           else showLogin();
           return;
         }
 
         if (!liff.getIDToken()) {
-          showError('ไม่สามารถยืนยันตัวตนกับ LINE ได้ — กรุณาเปิดผ่านแอป LINE อีกครั้ง');
+          showError(ftErr('ไม่ได้ ID Token — LIFF ID ใน config.js อาจไม่ตรงกับ LIFF app ที่เปิดหน้านี้', 'liff'));
           return;
         }
 
@@ -355,7 +416,7 @@
 
         await ticketsP;
       } catch (e) {
-        showError('เชื่อมต่อ LINE ไม่สำเร็จ: ' + e.message);
+        showError(ftErr('liff.init: ' + e.message, 'liff'));
       }
     }
     init();

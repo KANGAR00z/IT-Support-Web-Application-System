@@ -59,8 +59,21 @@ function createTicket(data, auth) {
   if (!categoryId) return fail_('กรุณาเลือกหมวดหมู่ปัญหา');
   if (!issueDetail) return fail_('กรุณากรอกรายละเอียดอาการ');
 
+  // รูปอาการเสีย (ไม่บังคับ) — URL สร้างที่ server เท่านั้น ไม่รับ imageUrl จาก client
+  let imageUrl = null;
+  if (data.imageData) {
+    const ext = IMAGE_TYPES[data.imageType];
+    if (!ext) return fail_('แนบได้เฉพาะรูป JPG / PNG / WEBP');
+    if (String(data.imageData).length * 3 / 4 > IMAGE_MAX_BYTES) return fail_('รูปใหญ่เกินไป — ลองถ่ายใหม่หรือเลือกรูปอื่น');
+    try {
+      imageUrl = saveTicketImage_(String(data.imageData), data.imageType, 'รูปแจ้งซ่อม_' + new Date().getTime() + '.' + ext);
+    } catch (error) {
+      return fail_('บันทึกรูปไม่สำเร็จ: ' + error);
+    }
+  }
+
   // ผู้ใช้ + ตั๋ว บันทึกพร้อมกัน — ตั๋วพังแล้วชื่อผู้ใช้ไม่ถูกเขียนทับไปครึ่งทาง
-  return withTx_(function (conn) {
+  const res = withTx_(function (conn) {
     upsertReporter_(conn, {
       userId: reporterId,
       name: cleanText_(data.displayName) || 'Unknown User',
@@ -71,10 +84,15 @@ function createTicket(data, auth) {
     const ticketId = insertTicket_(conn, {
       reporterId: reporterId, officeId: officeId, branchId: branchId, departmentId: departmentId,
       categoryId: categoryId, issueDetail: issueDetail,
-      imageUrl: data.imageUrl, docPdfUrl: data.docPdfUrl
+      imageUrl: imageUrl, docPdfUrl: data.docPdfUrl, phone: cleanPhone_(data.phone)
     });
     return ok_({ message: 'สร้างรายการแจ้งซ่อมสำเร็จ', ticketId: ticketId });
   });
+  // บันทึกตั๋วไม่สำเร็จ -> รูปที่เพิ่งอัปโหลดไม่มีใครอ้างถึง ทิ้งลงถังขยะ (กู้ได้ 30 วัน)
+  if (res.status === 'error' && imageUrl) {
+    try { trashMemoFile_(driveFileId_(imageUrl)); } catch (e) { /* ลบไม่ได้ก็แค่เหลือไฟล์ค้าง */ }
+  }
+  return res;
 }
 
 // คำสั่งอ่านผ่าน cachedRead_ (Infrastructure.gs): ครั้งแรกอ่าน DB แล้วเก็บไว้ ครั้งถัดไปไม่แตะ DB เลย

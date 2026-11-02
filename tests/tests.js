@@ -70,8 +70,14 @@ eq('board facets', f.categories, S.cats.map(c => ({ id: c.id, name: c.name })));
 ok('board facets only when asked', !('categories' in (await api('getBoard', { pages: { 1: 1, 2: 1, 3: 1 } }))));
 // ticket shape
 const t1 = f.columns.find(c => c.tickets.length).tickets[0];
-eq('ticket keys', Object.keys(t1).sort(), ['acceptedAt', 'assignee', 'branch', 'category', 'closedAt', 'code', 'createdAt', 'department', 'detail', 'id', 'office', 'pdfUrl', 'province', 'reporter', 'status'].sort());
-ok('createdAt iso', /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{3})?[+-]\d\d:\d\d$/.test(t1.createdAt));
+eq('ticket keys', Object.keys(t1).sort(), ['acceptedAt', 'assignee', 'branch', 'category', 'closedAt', 'code', 'createdAt', 'department', 'detail', 'id', 'imageUrl', 'office', 'pdfUrl', 'phone', 'province', 'reporter', 'status'].sort());
+{
+  // every timestamp, not just one: Postgres trims trailing zeros (.120 -> .12) and Safari needs exactly 3 digits
+  const isoRe = /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(\.\d{3})?[+-]\d\d:\d\d$/;
+  const all = (await api('getBoard', { closedDays: 0, pageSize: 50, pages: { 1: 1, 2: 1, 3: 1 } })).columns.flatMap(c => c.tickets);
+  const bad = all.flatMap(t => [t.createdAt, t.acceptedAt, t.closedAt]).filter(v => v != null && !isoRe.test(v));
+  ok('timestamps iso (' + bad.slice(0, 3).join(', ') + ')', all.length > 40 && bad.length === 0);
+}
 // legacy action is gone
 const legacy = await api('getTickets', {});
 ok('getTickets removed', legacy.status === 'error' && /ไม่พบคำสั่ง/.test(legacy.message));
@@ -206,6 +212,29 @@ await checkKb('size 5 p4', { pageSize: 5, page: 4 });
   await api('updateTicketStatus', { ticketId: openId, status: 1 });
   const back = await api('getBoard', { closedDays: 0, pages: { 1: 1, 2: 1, 3: 1 } });
   eq('restored', back.columns.map(c => c.all), before.columns.map(c => c.all));
+}
+
+// ---------- แจ้งซ่อม: เบอร์ภายใน + รูปอาการเสีย (ท้ายสุด — เพิ่มตั๋วแล้วยอดที่ตรวจข้างบนจะเปลี่ยน) ----------
+{
+  const base = { apiVersion: 2, displayName: 'ทดสอบ แจ้งใหม่', position: 'ทดสอบ', branchId: 20, departmentId: 1, categoryId: 2,
+    issueDetail: 'ทดสอบเบอร์และรูป', docPdfUrl: null };
+  const img = btoa('fake jpeg bytes');
+  const r = await api('createTicket', Object.assign({}, base, { phone: ' 64305 ', imageData: img, imageType: 'image/jpeg',
+    imageUrl: 'https://evil.example/x.png' }), 'Ustaff005');
+  ok('create with photo ok ' + JSON.stringify(r), r.status === 'success');
+  const t = (await api('getMyTickets', {}, 'Ustaff005')).tickets.find(x => x.id === r.ticketId) || {};
+  eq('phone stored', t.phone, '64305');
+  ok('photo url made by server, client url ignored ' + t.imageUrl, /^https:\/\/drive\.google\.com\/file\/d\//.test(t.imageUrl));
+  const b = await api('getBoard', { closedDays: 0, pages: { 1: 1, 2: 1, 3: 1 } });
+  const bt = b.columns[0].tickets.find(x => x.id === r.ticketId) || {};
+  eq('board has phone + photo', [bt.phone, bt.imageUrl], ['64305', t.imageUrl]);
+  const del = await api('deleteTempPdf', { url: t.imageUrl }, 'Ustaff009');
+  ok('ticket photo cannot be trashed as a temp file', del.status === 'error' && !Object.values(window.__drive).some(f => f.trashed));
+  ok('reject gif', (await api('createTicket', Object.assign({}, base, { imageData: img, imageType: 'image/gif' }), 'Ustaff005')).status === 'error');
+  ok('reject > 3MB', (await api('createTicket', Object.assign({}, base, { imageData: 'A'.repeat(4.2e6), imageType: 'image/jpeg' }), 'Ustaff005')).status === 'error');
+  const r2 = await api('createTicket', Object.assign({}, base, { phone: '-' }), 'Ustaff005');
+  const t2 = (await api('getMyTickets', {}, 'Ustaff005')).tickets.find(x => x.id === r2.ticketId) || {};
+  eq('no phone / no photo', [t2.phone, t2.imageUrl], ['', '']);
 }
 
 window.__testResult = { passes, fails };

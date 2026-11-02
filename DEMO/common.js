@@ -60,20 +60,20 @@ async function ftFetchJson_(body, timeoutMs) {
       body,
       signal: ctrl ? ctrl.signal : undefined
     });
-    if (!res.ok) throw new Error('เซิร์ฟเวอร์ตอบ HTTP ' + res.status);
+    if (!res.ok) throw ftErr('เซิร์ฟเวอร์ตอบ HTTP ' + res.status, 'server');
     const text = await res.text();
     try { return JSON.parse(text); }
-    catch (e) { throw new Error('เซิร์ฟเวอร์ตอบกลับไม่ใช่ข้อมูล (อาจเกิดข้อผิดพลาดฝั่งระบบ) — ลองใหม่อีกครั้ง'); }
+    catch (e) { throw ftErr('เซิร์ฟเวอร์ตอบกลับไม่ใช่ข้อมูล (อาจเกิดข้อผิดพลาดฝั่งระบบ) — ลองใหม่อีกครั้ง', 'server'); }
   } catch (e) {
     if (e.name === 'AbortError') {
-      const err = new Error('ระบบตอบช้าเกิน ' + Math.round(timeoutMs / 1000) + ' วินาที — ลองใหม่อีกครั้ง');
+      const err = ftErr('ระบบตอบช้าเกิน ' + Math.round(timeoutMs / 1000) + ' วินาที — ลองใหม่อีกครั้ง', 'timeout');
       err.ftTimeout = true;
       throw err;
     }
     if (e instanceof TypeError) {
-      throw new Error(navigator.onLine === false
-        ? 'ไม่มีการเชื่อมต่ออินเทอร์เน็ต'
-        : 'เชื่อมต่อระบบไม่สำเร็จ (เซิร์ฟเวอร์ไม่ตอบกลับ) — ลองใหม่อีกครั้ง');
+      throw navigator.onLine === false
+        ? ftErr('ไม่มีการเชื่อมต่ออินเทอร์เน็ต', 'offline')
+        : ftErr('เชื่อมต่อระบบไม่สำเร็จ (เซิร์ฟเวอร์ไม่ตอบกลับ) — ลองใหม่อีกครั้ง', 'network');
     }
     throw e;
   } finally {
@@ -94,7 +94,7 @@ async function ftCallBackend(action, data, log, opts) {
   //                                 (2) LIFF app ไม่ได้เปิด scope "openid" ใน LINE console
   //     — กรณี (2) หลอกมาก เพราะ getProfile() ยังได้ชื่อ/รูปตามปกติ (นั่นคือ scope "profile")
   //       เห็นชื่อตัวเองมุมขวาบนจึงไม่ได้แปลว่ามี ID Token
-  if (!idToken) throw new Error('ไม่มี LINE ID Token — ยังไม่ได้ login หรือ LIFF app ไม่ได้เปิด scope "openid"');
+  if (!idToken) throw ftErr('ไม่มี LINE ID Token — ยังไม่ได้ login หรือ LIFF app ไม่ได้เปิด scope "openid"', 'nologin');
   const body = JSON.stringify({ action, idToken, data: data || {} });
   const read = ftIsReadAction(action);
   let json;
@@ -113,8 +113,8 @@ async function ftCallBackend(action, data, log, opts) {
   const authFailed = json && json.status === 'error' &&
     (json.code === 'AUTH_INVALID' || (!json.code && /ยืนยันตัวตน LINE/.test(json.message || '')));
   if (authFailed) {
-    if (ftIsReadAction(action) && !(opts && opts.noRelogin) && ftRelogin()) throw new Error('กำลังเข้าสู่ระบบใหม่…');
-    throw new Error(FT_AUTH_EXPIRED_MSG);
+    if (ftIsReadAction(action) && !(opts && opts.noRelogin) && ftRelogin()) throw ftErr('กำลังเข้าสู่ระบบใหม่…', 'auth');
+    throw ftErr(FT_AUTH_EXPIRED_MSG, 'auth');
   }
   try { sessionStorage.removeItem(FT_RELOGIN_KEY); } catch (e) {}
   return json;
@@ -136,6 +136,7 @@ const ftShortOrg = (s) => String(s || '').replace(/^สำนักงานส�
 // ใช้ใน JS: icon('pencil', 'w-4 h-4') · ใน HTML: <span data-icon="pencil" data-icon-class="w-4 h-4"></span>
 const FT_ICONS = {
   'arrow-right': '<path d="M5 12h14" /><path d="m12 5 7 7-7 7" />',
+  'camera': '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3" />',
   'check': '<path d="M20 6 9 17l-5-5" />',
   'chevron-left': '<path d="m15 18-6-6 6-6" />',
   'chevron-right': '<path d="m9 18 6-6-6-6" />',
@@ -143,7 +144,9 @@ const FT_ICONS = {
   'circle-alert': '<circle cx="12" cy="12" r="10" /><line x1="12" x2="12" y1="8" y2="12" /><line x1="12" x2="12.01" y1="16" y2="16" />',
   'circle-check': '<circle cx="12" cy="12" r="10" /><path d="m9 12 2 2 4-4" />',
   'clipboard-list': '<rect width="8" height="4" x="8" y="2" rx="1" ry="1" /><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" /><path d="M12 11h4" /><path d="M12 16h4" /><path d="M8 11h.01" /><path d="M8 16h.01" />',
+  'copy': '<rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />',
   'clock': '<circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />',
+  'cloud-off': '<path d="m2 2 20 20" /><path d="M5.782 5.782A7 7 0 0 0 9 19h8.5a4.5 4.5 0 0 0 1.307-.193" /><path d="M21.532 16.5A4.5 4.5 0 0 0 17.5 10h-1.79A7.008 7.008 0 0 0 10 5.07" />',
   'database': '<ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" />',
   'download': '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" />',
   'external-link': '<path d="M15 3h6v6" /><path d="M10 14 21 3" /><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />',
@@ -154,18 +157,24 @@ const FT_ICONS = {
   'loader-circle': '<path d="M21 12a9 9 0 1 1-6.219-8.56" />',
   'map-pin': '<path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0" /><circle cx="12" cy="10" r="3" />',
   'lock': '<rect width="18" height="11" x="3" y="11" rx="2" ry="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" />',
+  'phone': '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z" />',
   'pencil': '<path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" />',
   'plus': '<path d="M5 12h14" /><path d="M12 5v14" />',
   'refresh-cw': '<path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" /><path d="M21 3v5h-5" /><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" /><path d="M8 16H3v5" />',
   'rotate-ccw': '<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" /><path d="M3 3v5h5" />',
   'save': '<path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" /><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7" /><path d="M7 3v4a1 1 0 0 0 1 1h7" />',
-  'settings': '<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
+  'shield-alert': '<path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /><path d="M12 8v4" /><path d="M12 16h.01" />',
+  'settings':'<path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" /><circle cx="12" cy="12" r="3" />',
+  'sliders-horizontal': '<line x1="21" x2="14" y1="4" y2="4" /><line x1="10" x2="3" y1="4" y2="4" /><line x1="21" x2="12" y1="12" y2="12" /><line x1="8" x2="3" y1="12" y2="12" /><line x1="21" x2="16" y1="20" y2="20" /><line x1="12" x2="3" y1="20" y2="20" /><line x1="14" x2="14" y1="2" y2="6" /><line x1="8" x2="8" y1="10" y2="14" /><line x1="16" x2="16" y1="18" y2="22" />',
   'square-kanban': '<rect width="18" height="18" x="3" y="3" rx="2" /><path d="M8 7v7" /><path d="M12 7v4" /><path d="M16 7v9" />',
   'timer': '<line x1="10" x2="14" y1="2" y2="2" /><line x1="12" x2="15" y1="14" y2="11" /><circle cx="12" cy="14" r="8" />',
   'trash-2': '<path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /><line x1="10" x2="10" y1="11" y2="17" /><line x1="14" x2="14" y1="11" y2="17" />',
   'triangle-alert': '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" />',
   'user': '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" />',
+  'user-x': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><line x1="17" x2="22" y1="8" y2="13" /><line x1="22" x2="17" y1="8" y2="13" />',
   'users': '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" />',
+  'wrench': '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />',
+  'wifi-off': '<path d="M12 20h.01" /><path d="M8.5 16.429a5 5 0 0 1 7 0" /><path d="M5 12.859a10 10 0 0 1 5.17-2.69" /><path d="M19 12.859a10 10 0 0 0-2.007-1.523" /><path d="M2 8.82a15 15 0 0 1 4.177-2.643" /><path d="M22 8.82a15 15 0 0 0-11.288-3.764" /><path d="m2 2 20 20" />',
   'x': '<path d="M18 6 6 18" /><path d="m6 6 12 12" />'
 };
 
@@ -269,6 +278,116 @@ function ftConfirm(message, opts) {
 // แจ้งเตือนที่ผู้ใช้ต้องอ่านก่อนไปต่อ (มีปุ่มเดียว)
 const ftAlert = (message, opts) => ftConfirm(message, Object.assign({ cancelText: null }, opts));
 
+async function ftCopy(text, label) {
+  try {
+    await navigator.clipboard.writeText(text);
+    ftToast('คัดลอก' + (label || '') + 'แล้ว', 'success');
+  } catch (e) {
+    ftToast('คัดลอกไม่ได้บนเบราว์เซอร์นี้ — กดค้างที่ข้อความเพื่อคัดลอกเอง', 'info');
+  }
+}
+
+/* ---------- หน้าสถานะ "โหลดไม่สำเร็จ" ----------------------------------------
+   แทนการโชว์ข้อมูลตัวอย่าง (เดิม) — ของปลอมทำให้คนเข้าใจผิดว่าระบบใช้ได้/ข้อมูลเป็นปัจจุบัน
+   แยกสาเหตุให้ผู้ใช้รู้ว่าต้องทำอะไรต่อ: รอเน็ต / ลองใหม่ / login ใหม่ / ขอสิทธิ์ / แจ้งผู้ดูแล
+   ข้อความดิบจากระบบพับไว้ใต้ "รายละเอียดสำหรับผู้ดูแลระบบ" (ในแอป LINE เปิด console ไม่ได้ นี่คือทางเดียวที่จะรู้สาเหตุจริง)
+   ---------------------------------------------------------------------------- */
+function ftErr(message, kind) {
+  const e = new Error(message);
+  e.ftKind = kind;
+  return e;
+}
+
+// tone: warn = ปัญหาชั่วคราว (เน็ต/ช้า) · danger = ระบบพัง · brand = ผู้ใช้ทำต่อเองได้ (login/สิทธิ์)
+const FT_ERR = {
+  offline:   { icon: 'wifi-off',       tone: 'warn',   title: 'ไม่มีการเชื่อมต่ออินเทอร์เน็ต',
+               hint: 'ตรวจ Wi-Fi หรือเน็ตมือถือ — กลับมาออนไลน์เมื่อไหร่ หน้านี้จะโหลดใหม่ให้เอง' },
+  timeout:   { icon: 'clock',          tone: 'warn',   title: 'ระบบตอบช้ากว่าปกติ',
+               hint: 'เซิร์ฟเวอร์อาจกำลังเริ่มทำงาน รอสักครู่แล้วกดลองใหม่ · ถ้ายังเป็นหลายครั้ง แจ้งผู้ดูแลระบบ (ฐานข้อมูลอาจถูกพักการใช้งาน)' },
+  network:   { icon: 'cloud-off',      tone: 'warn',   title: 'เชื่อมต่อเซิร์ฟเวอร์ไม่ได้',
+               hint: 'ลองใหม่อีกครั้ง · ถ้ายังไม่ได้ แจ้งผู้ดูแลระบบ' },
+  auth:      { icon: 'lock',           tone: 'brand',  title: 'เซสชันหมดอายุ',
+               hint: 'เข้าสู่ระบบ LINE ใหม่เพื่อใช้งานต่อ', login: 'เข้าสู่ระบบใหม่' },
+  nologin:   { icon: 'lock',           tone: 'brand',  title: 'ยังไม่ได้เข้าสู่ระบบ LINE',
+               hint: 'เปิดหน้านี้ผ่านแอป LINE หรือกดเข้าสู่ระบบ', login: 'เข้าสู่ระบบ LINE' },
+  // liff.init / ID Token พังตอนเปิดหน้า (ส่วนใหญ่ LIFF ID ใน config.js ไม่ตรง) — ลองใหม่ = โหลดหน้าใหม่
+  liff:      { icon: 'circle-alert',   tone: 'danger', title: 'เชื่อมต่อ LINE ไม่สำเร็จ',
+               hint: 'ปิดหน้านี้แล้วเปิดใหม่จากเมนูในแอป LINE · ถ้ายังเป็น แจ้งผู้ดูแลระบบพร้อมรายละเอียดด้านล่าง' },
+  noaccount: { icon: 'user-x',         tone: 'brand',  title: 'ยังไม่มีบัญชีนี้ในระบบ',
+               hint: 'แจ้งซ่อมผ่านฟอร์มอย่างน้อย 1 ครั้งเพื่อสร้างบัญชี แล้วส่ง LINE ID ด้านล่างให้แอดมินตั้งบทบาท', showId: true },
+  forbidden: { icon: 'shield-alert',   tone: 'brand',  title: 'บัญชีนี้ไม่มีสิทธิ์เข้าหน้านี้',
+               hint: 'ถ้าต้องใช้งาน ส่ง LINE ID ด้านล่างให้แอดมินตั้งบทบาทที่เมนูผู้ใช้งาน', showId: true },
+  outdated:  { icon: 'refresh-cw',     tone: 'brand',  title: 'หน้าเว็บกับระบบเป็นคนละเวอร์ชัน',
+               hint: 'ปิดหน้านี้แล้วเปิดใหม่ · ถ้ายังเป็น แจ้งผู้ดูแลระบบให้ติดตั้งระบบให้ครบทั้งสองส่วน' },
+  server:    { icon: 'triangle-alert', tone: 'danger', title: 'ระบบขัดข้อง โหลดข้อมูลไม่สำเร็จ',
+               hint: 'ลองใหม่อีกครั้ง · ถ้ายังไม่ได้ แจ้งผู้ดูแลระบบพร้อมรายละเอียดด้านล่าง' },
+};
+
+// ประเภทของ error — ที่มาจากการเชื่อมต่อ ftFetchJson_/ftCallBackend ติด ftKind มาแล้ว
+// ที่เหลือเป็นข้อความจาก backend (ACL / เวอร์ชัน) จึงจับจากข้อความ — ไม่มีอะไรตรง = ระบบขัดข้อง
+function ftErrorKind(e) {
+  if (e && e.ftKind) return e.ftKind;
+  const m = String((e && e.message) || e || '');
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return 'offline';
+  if (m === FT_AUTH_EXPIRED_MSG || /ยืนยันตัวตน|ID Token|เข้าสู่ระบบใหม่/.test(m)) return 'auth';
+  if (/ไม่พบบัญชีในระบบ/.test(m)) return 'noaccount';                 // ACL: role = null
+  if (/ไม่มีสิทธิ์/.test(m)) return 'forbidden';
+  if (/ไม่พบคำสั่ง Action|เวอร์ชันเก่า/.test(m)) return 'outdated';   // หน้าเว็บใหม่กว่า/เก่ากว่า GAS
+  return 'server';
+}
+
+// วาดหน้าสถานะลงใน el · opts: { onRetry, onLogin, lineId, where, title: {kind: 'หัวข้อเฉพาะหน้านี้'} }
+function ftErrorState(el, e, opts) {
+  opts = opts || {};
+  const kind = ftErrorKind(e);
+  const c = FT_ERR[kind];
+  const tone = {
+    warn:   'bg-amber-50 text-amber-600 ring-amber-100',
+    danger: 'bg-red-50 text-red-600 ring-red-100',
+    brand:  'bg-brand-50 text-brand-600 ring-brand-100',
+  }[c.tone];
+  const title = (opts.title && opts.title[kind]) || c.title;
+  const msg = String((e && e.message) || e || '-');
+  const detail = 'สาเหตุ: ' + msg + '\nประเภท: ' + kind + '\nหน้า: ' + (opts.where || location.pathname) +
+                 '\nเวลา: ' + new Date().toLocaleString('th-TH');
+  const login = c.login && opts.onLogin;
+  const btn = 'inline-flex items-center justify-center gap-2 px-4 py-2.5 min-h-[44px] rounded-xl text-sm font-semibold transition-colors';
+  el.innerHTML = `
+    <div class="flex flex-col items-center text-center max-w-md mx-auto py-8 md:py-12 px-2" role="alert">
+      <span class="w-16 h-16 rounded-full ring-8 flex items-center justify-center ${tone}">${icon(c.icon, 'w-7 h-7')}</span>
+      <h2 class="mt-5 text-lg font-semibold text-slate-800">${escapeHtml(title)}</h2>
+      <p class="mt-1.5 text-sm leading-relaxed text-slate-500">${escapeHtml(c.hint)}</p>
+      ${c.showId && opts.lineId ? `
+        <div class="mt-4 inline-flex items-center gap-2 max-w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs">
+          <span class="text-slate-500 shrink-0">LINE ID</span>
+          <code class="font-mono text-slate-700 break-all text-left">${escapeHtml(opts.lineId)}</code>
+          <button type="button" data-err="copy-id" class="shrink-0 text-slate-400 hover:text-brand-600 p-1 -m-1 rounded" aria-label="คัดลอก LINE ID">${icon('copy', 'w-4 h-4')}</button>
+        </div>` : ''}
+      <div class="mt-5 flex flex-wrap items-center justify-center gap-2">
+        ${login ? `<button type="button" data-err="login" class="${btn} bg-brand-600 text-white hover:bg-brand-700">${escapeHtml(c.login)}</button>` : ''}
+        ${opts.onRetry ? `<button type="button" data-err="retry" class="${btn} ${login ? 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50' : 'bg-brand-600 text-white hover:bg-brand-700'}">${icon('refresh-cw', 'w-4 h-4')}ลองใหม่</button>` : ''}
+      </div>
+      <div class="mt-3 text-[11px] text-slate-400">ลองโหลดล่าสุด ${new Date().toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</div>
+      <details class="mt-5 w-full text-left">
+        <summary class="text-xs text-slate-500 cursor-pointer select-none text-center">รายละเอียดสำหรับผู้ดูแลระบบ</summary>
+        <pre class="mt-2 text-[11px] leading-relaxed whitespace-pre-wrap break-words rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-600">${escapeHtml(detail)}</pre>
+        <button type="button" data-err="copy-detail" class="mt-2 inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-brand-600">${icon('copy', 'w-3.5 h-3.5')}คัดลอกรายละเอียด</button>
+      </details>
+    </div>`;
+  el.querySelectorAll('[data-err]').forEach(b => b.addEventListener('click', () => {
+    const a = b.dataset.err;
+    if (a === 'copy-id') ftCopy(opts.lineId, ' LINE ID ');
+    if (a === 'copy-detail') ftCopy(detail, 'รายละเอียด');
+    if (a === 'login') opts.onLogin();
+    if (a === 'retry') {
+      b.disabled = true;   // กันกดซ้ำระหว่างรอ — ตัวโหลดจะวาดหน้านี้ใหม่ (หรือแสดงข้อมูล) เอง
+      b.innerHTML = icon('refresh-cw', 'w-4 h-4 animate-spin') + 'กำลังลองใหม่…';
+      opts.onRetry();
+    }
+  }));
+  return kind;
+}
+
 // ---------- Skeleton (โครงหน้าระหว่างโหลด แทนวงกลมหมุน) ----------
 // ผู้ใช้เห็นรูปร่างของสิ่งที่จะมา = รู้สึกรอน้อยกว่า และหน้าไม่กระโดดตอนข้อมูลมาถึง
 const ftBar = (w, h) => `<div class="animate-pulse bg-slate-200 rounded ${h || 'h-3'} ${w}"></div>`;
@@ -315,6 +434,28 @@ function timeAgo(iso) {
   if (diff < 86400) return Math.floor(diff / 3600) + ' ชม.ที่แล้ว';
   const d = Math.floor(diff / 86400);
   return d === 1 ? 'เมื่อวาน' : d + ' วันก่อน';
+}
+
+// วันที่แบบไทยสั้น: "12 ต.ค. 69 · 14:30 น." (withTime false = ไม่มีเวลา)
+function ftDate(iso, withTime) {
+  const t = parseT(iso);
+  if (t == null) return '';
+  const d = new Date(t);
+  const day = d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: '2-digit' });
+  return withTime === false ? day : day + ' · ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }) + ' น.';
+}
+
+// ไม่เกิน 7 วัน "3 ชม.ที่แล้ว" อ่านเร็วกว่า · เก่ากว่านั้น "47 วันก่อน" ต้องนับย้อนเอง -> บอกเป็นวันที่
+function ftWhen(iso) {
+  const t = parseT(iso);
+  if (t == null) return '';
+  return Date.now() - t < 7 * 864e5 ? timeAgo(iso) : ftDate(iso, false);
+}
+
+// ลิงก์ไฟล์ Drive (แชร์แบบมีลิงก์) -> URL ภาพย่อที่ใส่ <img> ได้ตรงๆ · '' ถ้าไม่ใช่ลิงก์ Drive
+function ftDriveThumb(url, width) {
+  const m = String(url || '').match(/[-\w]{25,}/);
+  return m ? 'https://drive.google.com/thumbnail?id=' + m[0] + '&sz=w' + (width || 800) : '';
 }
 
 // ระยะเวลาแบบอ่านง่าย: "45 นาที" / "3.2 ชม." / "1.5 วัน"

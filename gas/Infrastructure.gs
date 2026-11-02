@@ -104,7 +104,7 @@ function cacheGetObj_(key) {
 // ผลอ่านที่แคชได้: key ผูกเลขเวอร์ชันข้อมูล · แคชเฉพาะผลที่สำเร็จ
 // name ต้องแยกตามผู้ใช้เองถ้าผลต่างกันตามคน (เช่น 'my_' + userId) · เรียกหลังผ่าน ACL แล้วเท่านั้น
 // READ_CACHE_PREFIX: เปลี่ยนเมื่อรูปข้อมูลเปลี่ยนจาก SQL (ไม่ผ่านระบบ = ไม่เปลี่ยนเลขเวอร์ชันข้อมูลให้)
-const READ_CACHE_PREFIX = 'rd3_';
+const READ_CACHE_PREFIX = 'rd4_';   // rd4: ตั๋วมี phone + imageUrl (2026-11-02)
 
 function cachedRead_(name, fn) {
   const key = READ_CACHE_PREFIX + name + '_' + dataVersion_();
@@ -140,10 +140,10 @@ function toIsoLocal_(rs, col) {
   const raw = rs.getString(col);
   if (!raw || rs.wasNull()) return null;
   let s = String(raw).trim().replace(' ', 'T');
-  s = s.replace(/(\.\d{3})\d+/, '$1');           // เศษวินาที 6 หลัก -> 3 หลัก
+  // เศษวินาที -> 3 หลักพอดี: Postgres ตัด 0 ท้ายทิ้ง (".120000" แสดงเป็น ".12") และ Safari รับแค่ 3 หลัก
+  s = s.replace(/\.(\d+)/, function (m, d) { return '.' + (d + '00').slice(0, 3); });
   s = s.replace(/([+-]\d{2})(\d{2})$/, '$1:$2'); // "+0700" -> "+07:00"
   s = s.replace(/([+-]\d{2})$/, '$1:00');        // "+00"   -> "+00:00"
-  s = s.replace(/\.(\d{1,2})$/, '');             // ".0" ท้ายสุด -> ตัดทิ้ง
   return s;
 }
 
@@ -180,6 +180,15 @@ function renderMemoPdf_(form) {
   const blob = Utilities.newBlob(tpl.evaluate().getContent(), 'text/html', 'temp.html').getAs('application/pdf');
   blob.setName('แจ้งซ่อม_' + (form.name || 'user') + '_' + new Date().getTime() + '.pdf');
 
+  const file = DriveApp.getFolderById(FOLDER_ID).createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return file.getUrl();
+}
+
+// รูปอาการเสีย (base64 จากหน้าเว็บ) -> ไฟล์ในโฟลเดอร์เดียวกับ PDF แชร์แบบมีลิงก์ดูได้ -> คืน URL
+// ชนิด/ขนาดตรวจแล้วใน createTicket
+function saveTicketImage_(base64, mime, fileName) {
+  const blob = Utilities.newBlob(Utilities.base64Decode(base64), mime, fileName);
   const file = DriveApp.getFolderById(FOLDER_ID).createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   return file.getUrl();

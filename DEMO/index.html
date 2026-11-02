@@ -40,13 +40,23 @@
        (อยู่ในกล่อง) เยื้องจากแถบปุ่มล่าง (อยู่นอกกล่อง) ~7px — จองที่ scrollbar ทั้งสองข้าง
        ให้จุดกึ่งกลางตรงกัน · มือถือใช้ overlay scrollbar อยู่แล้ว กฎนี้จึงไม่มีผล */
     .main-scroll { scrollbar-gutter: stable both-edges; }
+    /* ผิดตรงไหนบอกใต้ช่องนั้น (เดิมเป็น toast ที่หายเองใน 3 วิ + bubble ของเบราว์เซอร์ที่หน้าตาไม่เหมือนกันแต่ละเครื่อง) */
+    .field-err { margin-top: 4px; font-size: 13px; color: #dc2626; }
+    .field-invalid { border-color: #f87171 !important; box-shadow: 0 0 0 3px rgba(248, 113, 113, .18); }
   </style>
 </head>
 <body class="flex flex-col h-[100dvh] overflow-hidden">
 
-  <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-center z-10 shrink-0 shadow-sm">
-    <div class="font-bold text-lg text-slate-800">แจ้งซ่อมใหม่ (FAST TICKET)</div>
-  </div>
+  <header class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-2 z-10 shrink-0 shadow-sm">
+    <div class="flex items-center gap-2.5 min-w-0">
+      <div class="w-8 h-8 rounded-lg bg-brand-600 text-white font-bold flex items-center justify-center shrink-0 text-sm">F</div>
+      <h1 class="font-bold text-base text-slate-800 truncate">แจ้งซ่อมใหม่</h1>
+    </div>
+    <!-- ติดตามสถานะได้จากหน้านี้เลย ไม่ต้องออกไปหาที่ Rich Menu · ข้อความที่พิมพ์ค้างไว้ระบบจำไว้ให้ (ft_draft) -->
+    <a id="historyLink" href="history.html" class="shrink-0 inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg text-sm font-medium text-brand-700 bg-brand-50 hover:bg-brand-100">
+      <span data-icon="clipboard-list" data-icon-class="w-4 h-4"></span>ประวัติของฉัน
+    </a>
+  </header>
 
   <div id="mainScroll" class="main-scroll flex-1 overflow-y-auto bg-slate-50 relative">
     
@@ -77,25 +87,26 @@
               <div class="text-xs text-slate-400">LINE: <span id="lineNameLabel">-</span></div>
             </div>
           </div>
-          <button type="button" id="toggleEditBtn" aria-label="แก้ไขข้อมูลผู้แจ้ง"
-                  class="w-10 h-10 shrink-0 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 hover:bg-slate-200 active:bg-slate-300 transition-colors">
-            <span data-icon="pencil" data-icon-class="w-5 h-5"></span>
+          <!-- ปุ่มมีคำกำกับ (เดิมเป็นไอคอนดินสอ <-> แผ่นดิสก์ ผู้ใช้ไม่รู้ว่าต้องกดเพื่อพับเก็บ) -->
+          <button type="button" id="toggleEditBtn" aria-expanded="false" aria-controls="profileEditMode"
+                  class="shrink-0 inline-flex items-center gap-1.5 px-3 min-h-[40px] rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 active:bg-slate-300 transition-colors">
+            <span data-icon="pencil" data-icon-class="w-4 h-4"></span>แก้ไข
           </button>
         </div>
 
-        <div id="profileDisplayMode" class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-sm block">
+        <div id="profileDisplayMode" class="bg-slate-50 rounded-xl p-3 border border-slate-100 text-sm">
           <div class="grid grid-cols-3 gap-y-2">
             <div class="text-slate-500">ชื่อ-สกุล:</div>
             <div class="col-span-2 font-medium text-slate-800" id="dispName">-</div>
             <div class="text-slate-500">ตำแหน่ง:</div>
-            <div class="col-span-2 text-slate-800" id="dispPosition">เจ้าหน้าที่ทั่วไป</div>
+            <div class="col-span-2 text-slate-800" id="dispPosition">-</div>
             <div class="text-slate-500">สังกัด:</div>
             <div class="col-span-2 text-slate-800 flex items-center">
               <span class="w-1.5 h-1.5 rounded-full bg-brand-500 mr-2"></span>
-              <span id="dispBranch">สำนักงานสรรพสามิตภาคที่ 9</span>
+              <span id="dispBranch">-</span>
             </div>
             <div class="text-slate-500">ส่วน:</div>
-            <div class="col-span-2 text-slate-800" id="dispDepartment">ส่วนอำนวยการ</div>
+            <div class="col-span-2 text-slate-800" id="dispDepartment">-</div>
             <div class="text-slate-500">เบอร์ภายใน:</div>
             <div class="col-span-2 text-slate-800" id="dispPhone">-</div>
           </div>
@@ -104,18 +115,23 @@
         <div id="profileEditMode" class="hidden grid-cols-1 gap-3 mt-2 animate-in fade-in">
           <input type="hidden" id="lineUserId">
           <div>
-            <label class="text-xs font-medium text-slate-500">ชื่อจริง - นามสกุลจริง <span class="text-red-500">*</span></label>
-            <input type="text" id="inputName" placeholder="เช่น สมชาย ใจดี (ห้ามใช้ชื่อ LINE)" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+            <label for="inputName" class="text-xs font-medium text-slate-500">ชื่อจริง - นามสกุลจริง <span class="text-red-500">*</span></label>
+            <input type="text" id="inputName" autocomplete="name" aria-required="true" aria-describedby="inputNameErr" placeholder="เช่น สมชาย ใจดี (ห้ามใช้ชื่อ LINE)" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+            <p id="inputNameErr" class="field-err hidden"></p>
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500">ตำแหน่ง</label>
-            <input type="text" id="inputPosition" value="เจ้าหน้าที่ทั่วไป" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+            <!-- เดิมเติม "เจ้าหน้าที่ทั่วไป" เป็นค่าจริงไว้ให้ — ไม่แก้ก็ลงเอกสารแบบนั้น จึงเป็น placeholder + บังคับกรอกแทน -->
+            <label for="inputPosition" class="text-xs font-medium text-slate-500">ตำแหน่ง <span class="text-red-500">*</span></label>
+            <input type="text" id="inputPosition" autocomplete="organization-title" aria-required="true" aria-describedby="inputPositionErr" placeholder="เช่น นักวิชาการพัสดุ" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+            <p id="inputPositionErr" class="field-err hidden"></p>
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500">สาขา / สำนักงาน (Branch)</label>
-            <select id="inputBranch" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
+            <label for="inputBranch" class="text-xs font-medium text-slate-500">สาขา / สำนักงาน <span class="text-red-500">*</span></label>
+            <select id="inputBranch" aria-required="true" aria-describedby="inputBranchErr" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
               <!-- ค่าสำรองตอนโหลดจาก DB ไม่ได้ (id ตรงกับ DB) เรียงตามผังหน่วยงาน · แสดงชื่อย่อ ชื่อเต็มอยู่ที่ data-full
-                   ตัวสำนักงานพื้นที่ id = Office_ID + 1000 (ตั้งไว้ตายตัวใน sql/2026-10-10-org-hierarchy.sql) -->
+                   ตัวสำนักงานพื้นที่ id = Office_ID + 1000 (ตั้งไว้ตายตัวใน sql/2026-10-10-org-hierarchy.sql)
+                   ตัวแรกเป็น "-- เลือก --" เสมอ: เดิมเลือกภาค 9 ไว้ให้ คนที่ไม่ได้เปลี่ยน = สาขาผิดทั้งในเอกสารและสถิติ -->
+              <option value="" disabled selected>-- เลือกสาขา / สำนักงาน --</option>
               <option value="1" data-office="1" data-full="สำนักงานสรรพสามิตภาคที่ 9">สำนักงานสรรพสามิตภาคที่ 9</option>
               <optgroup label="สำนักงานสรรพสามิตพื้นที่ตรัง">
                 <option value="1003" data-office="3" data-full="สำนักงานสรรพสามิตพื้นที่ตรัง">สำนักงานสรรพสามิตพื้นที่ตรัง</option>
@@ -154,45 +170,71 @@
                 <option value="16" data-office="8" data-full="สำนักงานสรรพสามิตพื้นที่สตูล สาขาเมืองสตูล">สาขาเมืองสตูล</option>
               </optgroup>
             </select>
+            <p id="inputBranchErr" class="field-err hidden"></p>
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500">ส่วน (Department)</label>
+            <label for="inputDepartment" class="text-xs font-medium text-slate-500">ส่วน <span class="text-red-500">*</span></label>
             <!-- ค่าสำรองตอนโหลดจาก DB ไม่สำเร็จ — value = DEPARTMENT.Dept_ID -->
-            <select id="inputDepartment" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
+            <select id="inputDepartment" aria-required="true" aria-describedby="inputDepartmentErr" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none bg-white">
+              <option value="" disabled selected>-- เลือกส่วน --</option>
               <option value="1">ส่วนอำนวยการ</option>
               <option value="2">ส่วนบริหารจัดเก็บภาษี</option>
               <option value="3">ส่วนตรวจสอบ ป้องกันและปราบปราม</option>
               <option value="4">ส่วนกฎหมาย</option>
               <option value="5">ส่วนเทคโนโลยีสารสนเทศ</option>
             </select>
+            <p id="inputDepartmentErr" class="field-err hidden"></p>
           </div>
           <div>
-            <label class="text-xs font-medium text-slate-500">เบอร์โทรศัพท์ภายใน (ถ้ามี)</label>
-            <input type="text" id="inputPhone" inputmode="tel" placeholder="เช่น 64305" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
+            <label for="inputPhone" class="text-xs font-medium text-slate-500">เบอร์โทรศัพท์ภายใน (ถ้ามี)</label>
+            <input type="text" id="inputPhone" inputmode="tel" autocomplete="tel" maxlength="30" placeholder="เช่น 64305 — เจ้าหน้าที่ใช้โทรกลับ" class="w-full border border-slate-300 rounded-lg px-3 py-2.5 text-sm focus:ring-2 focus:ring-brand-500 outline-none">
           </div>
         </div>
       </div>
 
       <form id="ticketForm" class="p-4 sm:p-5 space-y-5">
         <div class="space-y-1.5">
-          <label class="block text-sm font-bold text-slate-700">เลขครุภัณฑ์ / รหัสเครื่อง (ถ้ามี)</label>
+          <label for="assetId" class="block text-sm font-bold text-slate-700">เลขครุภัณฑ์ / รหัสเครื่อง (ถ้ามี)</label>
           <input type="text" id="assetId" placeholder="เช่น PC-2023-001" class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm">
         </div>
 
         <div class="space-y-1.5">
-          <label class="block text-sm font-bold text-slate-700">หมวดหมู่ปัญหา <span class="text-red-500">*</span></label>
-          <select id="category" required class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm">
+          <label for="category" class="block text-sm font-bold text-slate-700">หมวดหมู่ปัญหา <span class="text-red-500">*</span></label>
+          <select id="category" required aria-describedby="categoryErr" class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm">
             <option value="" disabled selected>-- เลือกหมวดหมู่ --</option>
             <option value="1">ฮาร์ดแวร์ (Hardware)</option>
             <option value="2">ซอฟต์แวร์ (Software)</option>
             <option value="3">เครือข่าย (Network)</option>
             <option value="4">อื่นๆ (Others)</option>
           </select>
+          <p id="categoryErr" class="field-err hidden"></p>
         </div>
 
         <div class="space-y-1.5">
-          <label class="block text-sm font-bold text-slate-700">รายละเอียดอาการเสีย <span class="text-red-500">*</span></label>
-          <textarea id="description" required placeholder="อธิบายอาการที่พบ เช่น เปิดคอมไม่ติด หน้าจอกระพริบ..." class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 h-28 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm"></textarea>
+          <label for="description" class="block text-sm font-bold text-slate-700">รายละเอียดอาการเสีย <span class="text-red-500">*</span></label>
+          <textarea id="description" required aria-describedby="descriptionErr" placeholder="อธิบายอาการที่พบ เช่น เปิดคอมไม่ติด หน้าจอกระพริบ..." class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 h-28 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm"></textarea>
+          <p id="descriptionErr" class="field-err hidden"></p>
+        </div>
+
+        <!-- รูปอาการเสีย (ไม่บังคับ) — ย่อในเครื่องก่อนส่ง แล้ว server เก็บใน Drive โฟลเดอร์เดียวกับ PDF (TICKET.Image_URL) -->
+        <div class="space-y-1.5">
+          <span id="photoLabel" class="block text-sm font-bold text-slate-700">รูปถ่ายอาการเสีย (ถ้ามี)</span>
+          <!-- accept="image/*": มือถือเสนอทั้งกล้องและคลังรูป · input ซ่อนไว้ ใช้ label เป็นปุ่มใหญ่กดง่าย -->
+          <input type="file" id="photoInput" accept="image/*" class="sr-only" aria-labelledby="photoLabel">
+          <label id="photoPick" for="photoInput" class="flex items-center justify-center gap-2 w-full min-h-[56px] rounded-xl border-2 border-dashed border-slate-300 bg-white text-slate-600 text-sm font-medium cursor-pointer hover:border-brand-400 hover:text-brand-700 transition-colors">
+            <span data-icon="camera" data-icon-class="w-5 h-5"></span>ถ่ายรูป / เลือกรูป
+          </label>
+          <div id="photoPreview" class="hidden flex items-center gap-3 bg-white border border-slate-200 rounded-xl p-2.5">
+            <img id="photoImg" alt="รูปที่แนบ" class="w-16 h-16 rounded-lg object-cover bg-slate-100 shrink-0">
+            <div class="flex-1 min-w-0 text-sm">
+              <div class="font-medium text-slate-700">แนบรูปแล้ว</div>
+              <div id="photoInfo" class="text-xs text-slate-500"></div>
+            </div>
+            <button type="button" id="photoRemove" class="shrink-0 inline-flex items-center gap-1 px-3 min-h-[40px] rounded-lg text-sm text-slate-600 bg-slate-100 hover:bg-slate-200">
+              <span data-icon="x" data-icon-class="w-4 h-4"></span>ลบรูป
+            </button>
+          </div>
+          <p class="text-xs text-slate-500">รูปช่วยให้เจ้าหน้าที่เห็นปัญหาก่อนไปหน้างาน — ระบบย่อขนาดให้อัตโนมัติ</p>
         </div>
         
         <div class="h-4"></div>
@@ -250,6 +292,7 @@
 
     <div class="bg-white border-t border-slate-200 px-4 pt-4 shrink-0 shadow-[0_-4px_15px_rgba(0,0,0,0.05)] safe-b">
       <div class="app-w flex flex-col gap-3">
+        <p id="previewPhotoNote" class="hidden text-xs text-slate-500 text-center">แนบรูป 1 รูป — เจ้าหน้าที่ดูได้ในระบบ (รูปไม่อยู่ในเอกสาร PDF)</p>
         <button id="downloadPdfBtn" class="w-full bg-white hover:bg-slate-50 text-brand-700 border border-brand-200 font-bold text-base py-3 rounded-xl transition-all flex items-center justify-center gap-2">
           <span data-icon="download" data-icon-class="w-5 h-5"></span> ดาวน์โหลด PDF เก็บไว้
         </button>
@@ -312,32 +355,88 @@
       $('debugText').innerText = isDebugOpen ? 'ปิด Debug Mode' : 'เปิด Debug Mode';
     }
 
-    // ---------- Profile edit toggle ----------
+    // ---------- ข้อมูลผู้แจ้ง: เปิดแก้ไข / พับเก็บ ----------
+    function setProfileEditing(on) {
+      isEditingProfile = on;
+      $("profileDisplayMode").classList.toggle("hidden", on);
+      $("profileEditMode").classList.toggle("hidden", !on);
+      $("profileEditMode").classList.toggle("grid", on);
+      const btn = $("toggleEditBtn");
+      btn.setAttribute("aria-expanded", String(on));
+      btn.innerHTML = on ? icon("check", "w-4 h-4") + "เสร็จ" : icon("pencil", "w-4 h-4") + "แก้ไข";
+      if (!on) { syncProfileDisplay(); saveReporter(); }
+    }
+
+    // กด "เสร็จ" = ตรวจก่อนพับ — ข้อมูลไม่ครบแล้วพับไป ผู้ใช้จะไม่เห็นว่าขาดอะไรจนกดส่ง
     $("toggleEditBtn").addEventListener("click", () => {
-      isEditingProfile = !isEditingProfile;
-      if (isEditingProfile) {
-        $("profileDisplayMode").classList.replace("block", "hidden");
-        $("profileEditMode").classList.replace("hidden", "grid");
-        $("toggleEditBtn").innerHTML = icon("save", "w-5 h-5");
-      } else {
-        syncProfileDisplay();
-        saveReporter();
-        $("profileEditMode").classList.replace("grid", "hidden");
-        $("profileDisplayMode").classList.replace("hidden", "block");
-        $("toggleEditBtn").innerHTML = icon("pencil", "w-5 h-5");
-      }
+      if (!isEditingProfile) { setProfileEditing(true); $("inputName").focus(); return; }
+      const errs = reporterErrors();
+      showFieldErrors(errs, REPORTER_IDS);
+      const first = REPORTER_IDS.find(id => errs[id]);
+      if (first) { $(first).focus(); return; }
+      setProfileEditing(false);
     });
 
     function syncProfileDisplay() {
       const branchSelect = $("inputBranch");
       const deptSelect = $("inputDepartment");
-      const name = $("inputName").value.trim();
-      if (name) $("dispName").innerText = name;
-      else $("dispName").innerHTML = '<span class="text-red-500">— กรุณากรอกชื่อจริง-นามสกุลจริง —</span>';
-      $("dispPosition").innerText = $("inputPosition").value;
-      $("dispBranch").innerText = fullBranchName(branchSelect.options[branchSelect.selectedIndex]);
-      $("dispDepartment").innerText = deptSelect.options[deptSelect.selectedIndex].text;
+      const show = (id, value, ask) => {
+        if (value) $(id).innerText = value;
+        else $(id).innerHTML = '<span class="text-red-500">— ' + ask + ' —</span>';
+      };
+      show("dispName", $("inputName").value.trim(), "กรุณากรอกชื่อจริง-นามสกุลจริง");
+      show("dispPosition", $("inputPosition").value.trim(), "กรุณากรอกตำแหน่ง");
+      show("dispBranch", branchSelect.value ? fullBranchName(branchSelect.options[branchSelect.selectedIndex]) : "", "กรุณาเลือกสาขา");
+      show("dispDepartment", deptSelect.value ? deptSelect.options[deptSelect.selectedIndex].text : "", "กรุณาเลือกส่วน");
       $("dispPhone").innerText = $("inputPhone").value.trim() || "-";
+    }
+
+    // ---------- ตรวจข้อมูล: บอกใต้ช่องที่ผิด ----------
+    const REPORTER_IDS = ["inputName", "inputPosition", "inputBranch", "inputDepartment"];
+    const FIELD_IDS = REPORTER_IDS.concat(["category", "description"]);
+
+    // คืน { id ช่อง: ข้อความผิด } — ว่าง = ผ่าน
+    function reporterErrors() {
+      const name = $("inputName").value.trim();
+      const e = {};
+      if (!name) e.inputName = "กรุณากรอกชื่อจริง-นามสกุลจริง";
+      else if (name.split(/\s+/).length < 2) e.inputName = "กรุณากรอกทั้งชื่อจริงและนามสกุล (เว้นวรรคระหว่างกัน)";
+      else if (lineDisplayName && name.toLowerCase() === lineDisplayName.trim().toLowerCase()) e.inputName = "ห้ามใช้ชื่อ LINE — กรุณากรอกชื่อจริง-นามสกุลจริง";
+      if (!$("inputPosition").value.trim()) e.inputPosition = "กรุณากรอกตำแหน่ง";
+      if (!$("inputBranch").value) e.inputBranch = "กรุณาเลือกสาขา / สำนักงาน";
+      if (!$("inputDepartment").value) e.inputDepartment = "กรุณาเลือกส่วน";
+      return e;
+    }
+    function ticketErrors() {
+      const e = {};
+      if (!$("category").value) e.category = "กรุณาเลือกหมวดหมู่ปัญหา";
+      if (!$("description").value.trim()) e.description = "กรุณาอธิบายอาการที่พบ";
+      return e;
+    }
+    function showFieldErrors(errs, ids) {
+      (ids || FIELD_IDS).forEach(id => {
+        const msg = errs[id] || "";
+        $(id).classList.toggle("field-invalid", !!msg);
+        $(id).setAttribute("aria-invalid", msg ? "true" : "false");
+        $(id + "Err").textContent = msg;
+        $(id + "Err").classList.toggle("hidden", !msg);
+      });
+    }
+    // แก้ช่องไหน ล้างข้อความผิดของช่องนั้น
+    FIELD_IDS.forEach(id => ["input", "change"].forEach(ev =>
+      $(id).addEventListener(ev, () => showFieldErrors({}, [id]))));
+
+    // ตรวจทั้งหน้า -> พาไปช่องแรกที่ผิด (ช่องผู้แจ้งอยู่ในกล่องที่พับได้ ต้องเปิดก่อน)
+    function validateAll() {
+      const rep = reporterErrors();
+      const errs = Object.assign({}, rep, ticketErrors());
+      showFieldErrors(errs);
+      const first = FIELD_IDS.find(id => errs[id]);
+      if (!first) return true;
+      if (Object.keys(rep).length && !isEditingProfile) setProfileEditing(true);
+      $(first).focus();
+      $(first).scrollIntoView({ block: "center", behavior: "smooth" });
+      return false;
     }
 
     // ---------- จำข้อมูลผู้แจ้ง (คนแจ้งประจำไม่ต้องกรอกชื่อ/สาขาใหม่ทุกครั้ง) ----------
@@ -353,6 +452,16 @@
         }));
       } catch (e) {}
     }
+    // สาขา/ส่วนที่จำไว้แต่ยังไม่มีในตัวเลือกตอนนี้ (ตัวเลือกจาก DB ยังมาไม่ถึง) — applyMasterData เลือกให้เมื่อมาถึง
+    const wantedSelect = {};
+    function selectIfPresent(id, value) {
+      if (!value) return false;
+      const ok = [...$(id).options].some(o => o.value === String(value));
+      if (ok) { $(id).value = String(value); delete wantedSelect[id]; }
+      else wantedSelect[id] = String(value);
+      return ok;
+    }
+
     function restoreReporter(userId) {
       let r = null;
       try { r = JSON.parse(localStorage.getItem(REPORTER_KEY) || 'null'); } catch (e) {}
@@ -360,12 +469,113 @@
       $("inputName").value = r.name || '';
       if (r.position) $("inputPosition").value = r.position;
       // ชื่อ field เดิมที่เครื่องผู้ใช้อาจจำไว้: deptId (= สาขา, id ชุดเดียวกับ branchId)
-      const br = r.branchId || r.deptId;
-      if ([...$("inputBranch").options].some(o => o.value === br)) $("inputBranch").value = br;
-      if ([...$("inputDepartment").options].some(o => o.value === r.departmentId)) $("inputDepartment").value = r.departmentId;
+      selectIfPresent("inputBranch", r.branchId || r.deptId);
+      selectIfPresent("inputDepartment", r.departmentId);
       $("inputPhone").value = r.phone || '';
       return !!r.name;
     }
+
+    // ---------- ร่างที่พิมพ์ค้างไว้ (เลขครุภัณฑ์ / หมวด / อาการ) ----------
+    // LINE ปิดหน้าเอง / ต้อง login ใหม่ / กดไปดูประวัติ = หน้าโหลดใหม่ ข้อความที่พิมพ์ไว้ต้องไม่หาย
+    // ผูก LINE userId เหมือน ft_reporter · ลบเมื่อแจ้งสำเร็จ · ไม่จำรูป (ใหญ่เกิน localStorage)
+    const DRAFT_KEY = 'ft_draft';
+    let draftTimer = null;
+    function saveDraft() {
+      clearTimeout(draftTimer);
+      const owner = $("lineUserId").value;
+      if (!owner) return;
+      const d = { owner, assetId: $("assetId").value, category: $("category").value, description: $("description").value };
+      try {
+        if (!d.assetId.trim() && !d.description.trim() && !d.category) localStorage.removeItem(DRAFT_KEY);
+        else localStorage.setItem(DRAFT_KEY, JSON.stringify(d));
+      } catch (e) {}
+    }
+    function restoreDraft(userId) {
+      let d = null;
+      try { d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) {}
+      if (!d || d.owner !== userId) return false;
+      $("assetId").value = d.assetId || '';
+      $("description").value = d.description || '';
+      if (d.category && [...$("category").options].some(o => o.value === d.category)) $("category").value = d.category;
+      return !!((d.description || '') + (d.assetId || '')).trim();
+    }
+    function clearDraft() {
+      clearTimeout(draftTimer);
+      try { localStorage.removeItem(DRAFT_KEY); } catch (e) {}
+    }
+    ["assetId", "category", "description"].forEach(id => $(id).addEventListener(id === "category" ? "change" : "input", () => {
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(saveDraft, 400);
+    }));
+    // ข้อมูลผู้แจ้งก็จำทันทีที่พิมพ์ ไม่ต้องรอกด "เสร็จ" (หน้าโหลดใหม่กลางทางแล้วต้องกรอกใหม่หมด)
+    let reporterTimer = null;
+    REPORTER_IDS.concat(["inputPhone"]).forEach(id => $(id).addEventListener("input", () => {
+      clearTimeout(reporterTimer);
+      reporterTimer = setTimeout(saveReporter, 400);
+    }));
+    // ออกจากหน้า/สลับแอประหว่างรอ 400ms -> เก็บทันที
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") { saveDraft(); saveReporter(); }
+    });
+
+    // ---------- รูปอาการเสีย ----------
+    // ย่อในเครื่องก่อนส่ง: รูปจากกล้องมือถือ 3-8MB ส่งผ่านเน็ตมือถือช้า และเกินเพดาน server (3MB)
+    // ด้านยาว ≤1600px JPEG 80% ≈ 0.2-0.6MB ยังอ่านตัวหนังสือบนจอ/สติกเกอร์ครุภัณฑ์ได้
+    const PHOTO_MAX_SIDE = 1600;
+    let photo = null;   // { data: base64 ไม่มี prefix, type, url: data URL สำหรับพรีวิว, w, h }
+
+    async function shrinkPhoto(file) {
+      const src = URL.createObjectURL(file);
+      try {
+        const img = await new Promise((resolve, reject) => {
+          const i = new Image();
+          i.onload = () => resolve(i);
+          i.onerror = reject;
+          i.src = src;
+        });
+        const scale = Math.min(1, PHOTO_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+        const c = document.createElement("canvas");
+        c.width = Math.round(img.naturalWidth * scale);
+        c.height = Math.round(img.naturalHeight * scale);
+        const ctx = c.getContext("2d");
+        ctx.fillStyle = "#fff";   // PNG โปร่งใส -> JPEG พื้นดำ ถ้าไม่ปูขาวก่อน
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        const url = c.toDataURL("image/jpeg", 0.8);
+        return { data: url.slice(url.indexOf(",") + 1), type: "image/jpeg", url, w: c.width, h: c.height };
+      } finally {
+        URL.revokeObjectURL(src);
+      }
+    }
+
+    function showPhoto() {
+      $("photoPreview").classList.toggle("hidden", !photo);
+      $("photoPick").classList.toggle("hidden", !!photo);
+      if (!photo) { $("photoImg").removeAttribute("src"); return; }
+      $("photoImg").src = photo.url;
+      $("photoInfo").innerText = photo.w + "×" + photo.h + " px · " + Math.max(1, Math.round(photo.data.length * 3 / 4 / 1024)) + " KB";
+    }
+    function clearPhoto() { photo = null; showPhoto(); }
+
+    $("photoInput").addEventListener("change", async (e) => {
+      const file = e.target.files && e.target.files[0];
+      e.target.value = "";   // เลือกรูปเดิมซ้ำได้ (ไม่งั้น change ไม่ยิง)
+      if (!file) return;
+      if (file.type && !/^image\//.test(file.type)) { ftToast("แนบได้เฉพาะไฟล์รูปภาพ", "info"); return; }
+      $("photoPick").classList.add("opacity-60", "pointer-events-none");
+      try {
+        photo = await shrinkPhoto(file);
+        showPhoto();
+      } catch (err) {
+        ftToast("เปิดรูปนี้ไม่ได้ — ลองถ่ายใหม่ หรือเลือกรูป JPG / PNG", "error");
+      } finally {
+        $("photoPick").classList.remove("opacity-60", "pointer-events-none");
+      }
+    });
+    $("photoRemove").addEventListener("click", clearPhoto);
+
+    // หน้า "ประวัติของฉัน" — LIFF -> LIFF ต้องผ่าน liff.line.me ไม่งั้นหน้านั้นได้ token ของ LIFF app ตัวนี้แทน
+    const historyUrl = () => HISTORY_LIFF_ID ? "https://liff.line.me/" + HISTORY_LIFF_ID : "history.html";
 
     function setupDebug() {
       const q = new URLSearchParams(location.search).get('debug');
@@ -394,6 +604,8 @@
         // ไม่เติมชื่อ LINE ลงช่องชื่อจริง — ใช้ชื่อจริงที่เคยกรอกไว้ ถ้าไม่เคยก็ให้ผู้ใช้กรอกเอง
         const known = restoreReporter(profile.userId);
         syncProfileDisplay();
+        $("historyLink").href = historyUrl();
+        if (restoreDraft(profile.userId)) ftToast("เติมข้อความที่พิมพ์ค้างไว้ให้แล้ว", "info");
 
         if (profile.pictureUrl) {
           const img = $("profileImage");
@@ -404,7 +616,15 @@
 
         $("loading").classList.add("hidden");
         $("formContainer").classList.remove("hidden");
-        if (!known) openProfileEdit();   // ครั้งแรก: เปิดช่องกรอกให้เลย ไม่ต้องหาปุ่มดินสอ
+        // ครั้งแรก: เปิดช่องกรอกให้เลย · เคยกรอกแต่ขาดบางช่อง (เช่นสาขาที่จำไว้ถูกลบ) -> เปิด + บอกว่าขาดอะไร
+        // (สาขา/ส่วนที่รอตัวเลือกจาก DB ยังไม่นับว่าขาด — ถ้าสุดท้ายไม่มีจริง ตอนกดส่งจะบอกเอง)
+        const missing = reporterErrors();
+        Object.keys(wantedSelect).forEach(id => { delete missing[id]; });
+        if (Object.keys(missing).length) {
+          setProfileEditing(true);
+          if (known) showFieldErrors(missing, REPORTER_IDS);
+          else $("inputName").focus();
+        }
 
         const btn = $("previewBtn");
         btn.disabled = false;
@@ -439,7 +659,8 @@
       const branchSel = $("inputBranch"), catSel = $("category");
       const prevBranch = branchSel.value, prevCat = catSel.value;
 
-      branchSel.innerHTML = '';
+      // selected = ค่าตั้งต้นของ form.reset() ด้วย (ไม่มีตัวนี้ reset แล้วเบราว์เซอร์เลือกตัวแรกที่กดได้แทน)
+      branchSel.innerHTML = '<option value="" disabled selected>-- เลือกสาขา / สำนักงาน --</option>';
       ftSortOffices(md.offices).forEach(o => {
         const bs = ftSortBranches(md.branches.filter(b => b.officeId === o.id));
         if (!bs.length) return;
@@ -463,7 +684,8 @@
         });
       });
 
-      catSel.innerHTML = '<option value="" disabled>-- เลือกหมวดหมู่ --</option>';
+      // ต้องมี selected: ไม่งั้นหลังแจ้งสำเร็จ form.reset() เลือก "ฮาร์ดแวร์" ให้เอง แล้วตั๋วใบถัดไปผ่านการตรวจทั้งที่ไม่ได้เลือก
+      catSel.innerHTML = '<option value="" disabled selected>-- เลือกหมวดหมู่ --</option>';
       md.categories.forEach(c => {
         const opt = document.createElement('option');
         opt.value = c.id;
@@ -474,21 +696,25 @@
       // ส่วน: ไม่บังคับ — แคชในเครื่องก่อนมีตาราง DEPARTMENT ไม่มี departments ก็ยังใช้ข้อมูลอื่นได้
       if ((md.departments || []).length) {
         const secSel = $("inputDepartment"), prevSec = secSel.value;
-        secSel.innerHTML = '';
+        secSel.innerHTML = '<option value="" disabled selected>-- เลือกส่วน --</option>';
         md.departments.forEach(s => {
           const opt = document.createElement('option');
           opt.value = s.id;
           opt.textContent = s.name;
           secSel.appendChild(opt);
         });
-        if ([...secSel.options].some(o => o.value === prevSec)) secSel.value = prevSec;
-        $("dispDepartment").innerText = secSel.options[secSel.selectedIndex].text;
+        secSel.value = [...secSel.options].some(o => o.value === prevSec && prevSec) ? prevSec : '';
       }
 
       // คงค่าที่ผู้ใช้เลือกไว้แล้ว ถ้ายังมีอยู่ในรายการใหม่
-      if ([...branchSel.options].some(o => o.value === prevBranch)) branchSel.value = prevBranch;
+      branchSel.value = [...branchSel.options].some(o => o.value === prevBranch && prevBranch) ? prevBranch : '';
       catSel.value = [...catSel.options].some(o => o.value === prevCat && prevCat) ? prevCat : '';
-      $("dispBranch").innerText = fullBranchName(branchSel.options[branchSel.selectedIndex]);
+      // ค่าที่จำไว้แต่ตัวเลือกชุดก่อนไม่มี (สาขาที่มีแค่ใน DB)
+      Object.keys(wantedSelect).forEach(id => {
+        if (!$(id).value) selectIfPresent(id, wantedSelect[id]);
+        if ($(id).value) showFieldErrors({}, [id]);
+      });
+      syncProfileDisplay();
       return true;
     }
 
@@ -554,43 +780,17 @@
         departmentId: parseInt($("inputDepartment").value),                   // DEPARTMENT.Dept_ID
         categoryId: parseInt($("category").value),
         issueDetail: assetId ? `[${assetId}] ${desc}` : desc,
-        imageUrl: null,
+        phone: $("inputPhone").value.trim(),                                // เจ้าหน้าที่เห็นบนบอร์ด ไม่ต้องเปิด PDF หา
+        imageData: photo ? photo.data : undefined,                          // server เก็บลง Drive เอง (ไม่รับ URL จากหน้าเว็บ)
+        imageType: photo ? photo.type : undefined,
         docPdfUrl: null
       };
     }
 
-    // ---------- ตรวจสอบชื่อผู้แจ้ง (บังคับชื่อจริง ห้ามซ้ำชื่อ LINE) ----------
-    function openProfileEdit() {
-      if (!isEditingProfile) $("toggleEditBtn").click();
-      $("inputName").focus();
-    }
-
-    function validateReporterName() {
-      const name = $("inputName").value.trim();
-      if (!name) {
-        ftToast("กรุณากรอกชื่อจริง-นามสกุลจริงของผู้แจ้งซ่อม", "info");
-        openProfileEdit();
-        return false;
-      }
-      if (name.split(/\s+/).length < 2) {
-        ftToast("กรุณากรอกทั้งชื่อจริงและนามสกุลจริง", "info");
-        openProfileEdit();
-        return false;
-      }
-      if (name.toLowerCase() === lineDisplayName.trim().toLowerCase()) {
-        ftToast("กรุณาใช้ชื่อจริง-นามสกุลจริง (ห้ามใช้ชื่อ LINE)", "info");
-        openProfileEdit();
-        return false;
-      }
-      return true;
-    }
-
     // ---------- Preview (ดูเอกสาร) ----------
     $("previewBtn").addEventListener("click", async function () {
-      const form = $("ticketForm");
-      if (!form.checkValidity()) { form.reportValidity(); return; }
-      if (!validateReporterName()) return;
-      if (isEditingProfile) $("toggleEditBtn").click();
+      if (!validateAll()) return;
+      if (isEditingProfile) setProfileEditing(false);
 
       currentTicketPayload = buildTicketPayload();
 
@@ -608,6 +808,7 @@
             .replace('/view', '/preview');
 
           $('pdfLoading').classList.remove('hidden');
+          $('previewPhotoNote').classList.toggle('hidden', !photo);
           $('pdfIframe').src = previewUrl;
           $('previewScreen').classList.remove('hidden');
         } else {
@@ -662,7 +863,8 @@
     // ให้ผู้ใช้เลือกเอง เพราะ login ใหม่ = โหลดหน้าใหม่ ข้อมูลที่กรอกไว้จะหาย
     function handleAuthExpired(error) {
       if (!error || error.message !== FT_AUTH_EXPIRED_MSG) return false;
-      ftConfirm("ต้องเข้าสู่ระบบใหม่ก่อนส่งข้อมูล รายละเอียดอาการที่พิมพ์ไว้จะหาย (ข้อมูลผู้แจ้งยังจำไว้ให้)",
+      saveDraft();
+      ftConfirm("ต้องเข้าสู่ระบบใหม่ก่อนส่งข้อมูล — ข้อความที่พิมพ์ไว้ระบบจำไว้ให้แล้ว (ยกเว้นรูปที่แนบ ต้องแนบใหม่)",
         { title: "เซสชัน LINE หมดอายุ", confirmText: "เข้าสู่ระบบใหม่", icon: "lock" })
         .then(ok => { if (ok) { saveReporter(); ftRelogin(true); } });
       return true;
@@ -671,8 +873,7 @@
     // ---------- Submit (ยืนยันแจ้งซ่อม) ----------
     async function executeSubmit(btnElement) {
       const form = $("ticketForm");
-      if (!form.checkValidity()) { form.reportValidity(); return; }
-      if (!validateReporterName()) return;
+      if (!validateAll()) { cancelPreview(); return; }
 
       // กันไว้เฉยๆ — ตอนนี้ยืนยันได้จากหน้าตรวจสอบเอกสารเท่านั้น ซึ่งจะมี PDF อยู่แล้วเสมอ
       // แต่ถ้าวันหลังมีทางเรียกฟังก์ชันนี้เพิ่ม จะได้ไม่บันทึกตั๋วที่ไม่มีเอกสารแนบ
@@ -684,13 +885,17 @@
 
       const originalText = btnElement.innerHTML;
       btnElement.disabled = true;
-      btnElement.innerHTML = icon("loader-circle", "w-5 h-5 animate-spin") + "กำลังบันทึก...";
+      btnElement.innerHTML = icon("loader-circle", "w-5 h-5 animate-spin") + (photo ? "กำลังส่งรูปและบันทึก..." : "กำลังบันทึก...");
 
       try {
         const response = await callBackend("createTicket", currentTicketPayload);
         if (response.status === 'success') {
           saveReporter();
           form.reset();
+          $("category").value = "";   // กันไว้อีกชั้น — ต้องกลับเป็น "-- เลือกหมวดหมู่ --" เสมอ
+          clearDraft();
+          clearPhoto();
+          showFieldErrors({});
           currentTicketPayload = null;
           hidePreview();
           $("successCode").innerText = "TK-" + response.ticketId;
@@ -710,10 +915,7 @@
     // ยืนยันได้ที่เดียว: ในหน้าตรวจสอบเอกสาร (เอาปุ่มยืนยันบนหน้าหลักออกแล้ว)
     $("confirmFromPreviewBtn").addEventListener("click", function () { executeSubmit(this); });
 
-    // LIFF -> LIFF ต้องเปิดผ่าน liff.line.me ไม่งั้นหน้า history ได้ token ของ LIFF app ตัวนี้แทน
-    $("successHistoryBtn").addEventListener("click", () => {
-      location.href = HISTORY_LIFF_ID ? "https://liff.line.me/" + HISTORY_LIFF_ID : "history.html";
-    });
+    $("successHistoryBtn").addEventListener("click", () => { location.href = historyUrl(); });
     $("successNewBtn").addEventListener("click", () => {
       $("successScreen").classList.add("hidden");
       $("mainScroll").scrollTop = 0;

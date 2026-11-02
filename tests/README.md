@@ -6,6 +6,7 @@
 - `index.html` — สร้างตาราง + ข้อมูลทดสอบ (76 ตั๋ว 49 ผู้ใช้ 46 ประวัติ) · จำลองบริการของ Google Apps Script
   (JDBC, CacheService, ตรวจ LINE token) · โหลด `../gas/*.gs` แล้วรัน `tests.js`
 - `tests.js` — รายการตรวจ (แต่ละ `eq()`/`ok()` = 1 รายการ): กระดานงาน · แดชบอร์ด · ผู้ใช้งาน · ประวัติ · ล้างแคชหลังแก้ข้อมูล
+  · แจ้งซ่อมพร้อมเบอร์/รูป (Drive จำลองใน `index.html`)
 
 ไม่แตะ Supabase หรือ Google จริง และไม่มีรหัสผ่านใดๆ — ข้อมูลทั้งหมดเป็นข้อมูลจำลอง
 
@@ -17,7 +18,7 @@
 python -m http.server 8770
 ```
 
-เปิด <http://localhost:8770/tests/> รอ ~5-10 วินาที บรรทัดสุดท้ายจะขึ้น `PASS: 74/74 checks passed`
+เปิด <http://localhost:8770/tests/> รอ ~5-10 วินาที บรรทัดสุดท้ายจะขึ้น `PASS: 82/82 checks passed`
 (ถ้ามีข้อไม่ผ่านจะขึ้น `FAIL` พร้อมรายการที่ได้ / ที่ควรได้)
 
 > GAS JDBC ทำงานแบบ synchronous แต่ PGlite เป็น async — `index.html` จึงรัน `doPost` ซ้ำจนทุก query

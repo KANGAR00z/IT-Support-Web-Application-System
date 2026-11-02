@@ -28,9 +28,11 @@
 const STATUS = { OPEN: 1, IN_PROGRESS: 2, CLOSED: 3 };
 
 const COLUMNS = [
-  { key:'OPEN',        status:STATUS.OPEN,        title:'รอรับเรื่อง',      en:'Open',        dot:'bg-amber-400',  head:'text-amber-600',  body:'bg-amber-50/40' },
-  { key:'IN_PROGRESS', status:STATUS.IN_PROGRESS, title:'กำลังดำเนินการ',   en:'In Progress', dot:'bg-blue-500',   head:'text-blue-600',   body:'bg-blue-50/40' },
-  { key:'CLOSED',      status:STATUS.CLOSED,      title:'เสร็จสิ้น',         en:'Closed',      dot:'bg-emerald-500',head:'text-emerald-600',body:'bg-emerald-50/40' },
+  // สีสถานะเหลือแค่ "จุด" หน้าชื่อคอลัมน์ (ชื่อเป็นสีหมึก) — พื้นคอลัมน์เป็นเทาเรียบเหมือนกันหมด (.col-surface)
+  // tab = ชื่อบนแท็บมือถือ (3 แท็บในจอ 360px — "กำลังดำเนินการ" ยาวจนถูกตัด)
+  { key:'OPEN',        status:STATUS.OPEN,        title:'รอรับเรื่อง',      tab:'รอรับเรื่อง', en:'Open',        dot:'bg-amber-500' },
+  { key:'IN_PROGRESS', status:STATUS.IN_PROGRESS, title:'กำลังดำเนินการ',   tab:'กำลังทำ',    en:'In Progress', dot:'bg-blue-600' },
+  { key:'CLOSED',      status:STATUS.CLOSED,      title:'เสร็จสิ้น',         tab:'เสร็จสิ้น',   en:'Closed',      dot:'bg-emerald-600' },
 ];
 
 // จอสัมผัส: HTML5 drag & drop ไม่ทำงานบนมือถือเลย (dragstart ไม่ยิง)
@@ -38,15 +40,16 @@ const COLUMNS = [
 // แล้วเกิด ghost image ค้างจนเลื่อนบอร์ดไม่ได้ — ปุ่มบนการ์ดคือทางเปลี่ยนสถานะบนมือถือ
 const IS_TOUCH = window.matchMedia('(hover: none)').matches;
 
+// short = หัวข้อบนมือถือ (ชื่อเต็มสองภาษายาวจนถูกตัดเป็น "ตารางงาน IT Supp…")
 const VIEWS = {
-  dashboard: { title:'แดชบอร์ด (Dashboard)', sub:'ภาพรวมงานแจ้งซ่อม · คำนวณจากตั๋วทั้งหมด' },
-  board:     { title:'ตารางงาน IT Support (Task Board)',
-               sub: IS_TOUCH ? 'ปัดซ้าย-ขวาเพื่อดูคอลัมน์อื่น · แตะปุ่มบนการ์ดเพื่อเปลี่ยนสถานะ'
-                             : 'จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ' },
-  kb:        { title:'ประวัติการแจ้งซ่อม', sub:'รวมประวัติและวิธีแก้ไขปัญหาจากตั๋วที่ปิดงานแล้ว' },
-  users:     { title:'ผู้ใช้งาน (Users)', sub:'จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด' },
-  master:    { title:'ข้อมูลหลัก (Master Data)', sub:'พื้นที่ · สาขา · ส่วน · หมวดหมู่ปัญหา ที่ใช้ในฟอร์มแจ้งซ่อม' },
-  settings:  { title:'ตั้งค่า (Settings)', sub:'บัญชีของฉันและค่าตั้งต้นของแดชบอร์ด' },
+  dashboard: { title:'แดชบอร์ด (Dashboard)', short:'แดชบอร์ด', sub:'ภาพรวมงานแจ้งซ่อม · คำนวณจากตั๋วทั้งหมด' },
+  board:     { title:'ตารางงาน IT Support (Task Board)', short:'ตารางงาน',
+               sub: IS_TOUCH ? 'แตะการ์ดเพื่อดูรายละเอียด · ปัดซ้าย-ขวาเพื่อดูคอลัมน์อื่น'
+                             : 'ลากการ์ดเพื่อเปลี่ยนสถานะ · คลิกการ์ดเพื่อดูรายละเอียด' },
+  kb:        { title:'ประวัติการแจ้งซ่อม', short:'ประวัติการแจ้งซ่อม', sub:'รวมประวัติและวิธีแก้ไขปัญหาจากตั๋วที่ปิดงานแล้ว' },
+  users:     { title:'ผู้ใช้งาน (Users)', short:'ผู้ใช้งาน', sub:'จัดการบัญชีผู้ใช้งานและสิทธิ์การเข้าถึงระบบทั้งหมด' },
+  master:    { title:'ข้อมูลหลัก (Master Data)', short:'ข้อมูลหลัก', sub:'พื้นที่ · สาขา · ส่วน · หมวดหมู่ปัญหา ที่ใช้ในฟอร์มแจ้งซ่อม' },
+  settings:  { title:'ตั้งค่า (Settings)', short:'ตั้งค่า', sub:'เกี่ยวกับฉันและค่าตั้งต้นของแดชบอร์ด' },
 };
 
 // บทบาทผู้ใช้ — DB มีค่าเก่าปนอยู่ ('Staff' ตัวใหญ่จาก createTicket) จึง normalize
@@ -78,7 +81,6 @@ const cssVar = (n) => getComputedStyle(document.body).getPropertyValue(n).trim()
 // ---------- สถานะของหน้า ----------
 // ทุกหน้าโหลดเฉพาะตอนเปิดดู (lazy) และดึงจาก DB ทีละหน้า — ไม่โหลดตั๋ว/ผู้ใช้/ประวัติทั้งหมดมาไว้ในเครื่อง
 let tickets = [];             // ตั๋วบนบอร์ด "หน้าที่แสดงอยู่" ของทุกคอลัมน์ (หาตั๋วจาก id ตอนกดปุ่ม/ลากการ์ด)
-let usingMock = false;
 let currentView = 'board';
 // ---------- บอร์ด ----------
 let boardSearch = '';
@@ -91,19 +93,19 @@ let boardSort = 'new';        // new = ใหม่สุดก่อน · old 
 let closedDays = parseInt(localStorage.getItem('ft_closed_days'), 10);
 if (isNaN(closedDays)) closedDays = 7;
 let boardCompact = localStorage.getItem('ft_board_compact') === '1';
+// คอลัมน์ที่แสดงบนมือถือ (แท็บสถานะ) — จำไว้ข้ามการเปิดหน้า
+let mobileCol = parseInt(localStorage.getItem('ft_mobile_col'), 10) || 1;
 const BOARD_PAGE = 20;        // การ์ดต่อหน้า ต่อคอลัมน์
 let colPage = { 1: 1, 2: 1, 3: 1 };   // status -> หน้าที่แสดง
 let boardCols = null;         // status -> { tickets, total, all, page } จาก getBoard (null = ยังไม่มีข้อมูล)
 let boardCats = [];           // ตัวเลือกหมวดหมู่ของตัวกรอง [{ id, name }]
-let boardCatsLive = false;    // boardCats มาจาก DB แล้ว (ไม่ใช่ของโหมดตัวอย่าง)
-let boardLoaded = false;      // ลองโหลดไปแล้ว (สำเร็จหรือตกโหมดตัวอย่าง) — สลับหน้ากลับมาไม่ต้องโหลดซ้ำ
+let boardLoaded = false;      // โหลดสำเร็จแล้ว — สลับหน้ากลับมาไม่ต้องโหลดซ้ำ (ล้มเหลว = กลับมาแล้วลองใหม่เอง)
 // โมดูล Users — โหลดแบบ lazy ตอนเข้าหน้า ไม่ดึงพร้อมตั๋ว
 const USERS_PAGE = 20;
 let users = [];               // ผู้ใช้ในหน้าที่แสดงอยู่
 let usersPage = 1;
 let usersTotal = 0;           // จำนวนที่ตรงตัวกรอง (ใช้แบ่งหน้า)
 let usersCounts = { all: 0, admin: 0, it: 0, staff: 0 };   // ยอด KPI ของทั้งระบบ
-let usingMockUsers = false;
 let usersLoaded = false;
 let userSearch = '';
 let userRoleFilter = 'all';
@@ -113,7 +115,6 @@ let kbArticles = [];          // ประวัติในหน้าที�
 let kbPage = 1;
 let kbTotal = 0;
 let kbCats = null;            // ชิพหมวดหมู่ [{ id, name, n }] — null = ขอใหม่พร้อมหน้าถัดไป (facets)
-let usingMockKb = false;
 let kbLoaded = false;
 let kbSearch = '';
 let kbCatFilter = 'all';      // 'all' | 'none' (ไม่มีหมวด) | Category_ID (string)
@@ -135,25 +136,49 @@ try { localStorage.removeItem('ft_staff_profile'); localStorage.removeItem('ft_t
 let staffProfile   = JSON.parse(localStorage.getItem(PROFILE_KEY) || 'null');  // { name, position, role, office, branch, department, province }
 
 // ปุ่มยกเลิกงานแสดงเฉพาะแอดมิน (ด่านจริงคือ ACL ของ deleteTicket ฝั่ง backend)
-// โหมดตัวอย่างเปิดให้ลองได้ เพราะไม่บันทึกจริงอยู่แล้ว
 function isAdminUser() {
-  return usingMock || (!!staffProfile && roleOf(staffProfile.role) === 'admin');
+  return !!staffProfile && roleOf(staffProfile.role) === 'admin';
 }
 
 const callBackend = (action, data) => ftCallBackend(action, data);
 
 // LIFF init เป็น async แต่ switchView() วาดหน้าทันทีและสั่งโหลดข้อมูลของหน้านั้นเลย
-// ถ้าไม่รอ liff.init() ให้เสร็จก่อน getIDToken() จะคืน null -> backend ปฏิเสธ -> ตกโหมดตัวอย่าง
+// ถ้าไม่รอ liff.init() ให้เสร็จก่อน getIDToken() จะคืน null -> backend ปฏิเสธ -> ขึ้นหน้า "ยังไม่ได้เข้าสู่ระบบ"
 // ทั้งที่ login อยู่แท้ๆ · ทุก loadX() จึงต้อง await ตัวนี้ก่อนยิง backend
 // ค่า false = กำลังเด้งไปหน้า login (หน้านี้กำลังถูกทิ้ง) -> loadX() หยุด ไม่ต้องยิง backend
 let liffReady = Promise.resolve(true);
 let liffError = '';   // สาเหตุที่ login LINE ไม่ผ่าน — โชว์บนจอ เพราะในแอป LINE เปิด console ไม่ได้
 
-// พิมพ์ "สาเหตุจริง" ลงแบนเนอร์ — ใน LINE in-app browser เปิด DevTools ไม่ได้
-// ถ้า catch กลืน error ทิ้งเงียบๆ จะ debug บนมือถือไม่ได้เลยว่าพังเพราะอะไร
-function setMockReason(elId, err) {
-  const el = $(elId);
-  if (el) el.innerText = err ? 'สาเหตุ: ' + err.message : '';
+/* ---------- หน้าสถานะ "โหลดไม่สำเร็จ" (แทนข้อมูลตัวอย่างเดิม) ----------
+   โหลดหน้าไหนไม่สำเร็จ = ซ่อนเนื้อหาหน้านั้นทั้งหมด (รวมข้อมูลเก่า/แคช) แล้วโชว์ไอคอน + สาเหตุ + คำแนะนำ
+   (ftErrorState ใน common.js) — ข้อมูลเก่าที่ค้างจออาจทำให้เข้าใจผิดว่าเป็นปัจจุบัน
+   ข้อความดิบพับไว้ใต้ "รายละเอียดสำหรับผู้ดูแลระบบ" — ในแอป LINE เปิด DevTools ไม่ได้ นี่คือทางเดียวที่จะรู้สาเหตุ */
+const VIEW_ERR_BOX = { board: 'viewBoard', dashboard: 'viewDashboard', users: 'viewUsers', kb: 'viewKB', master: 'viewMaster' };
+const ERR_EL = { board: 'boardError', dashboard: 'dashError', users: 'usersError', kb: 'kbError', master: 'masterError' };
+const viewErr = {};   // view -> Error ล่าสุดที่ยังไม่หาย (ใช้ตอนกลับมาออนไลน์ / สลับกลับมาหน้านี้)
+
+function showViewError(view, e, retry, opts) {
+  // ไม่มี token เพราะ LINE login พังตั้งแต่เปิดหน้า -> บอกสาเหตุจริง (liffError) แทน "ยังไม่ได้เข้าสู่ระบบ"
+  if (liffError && ftErrorKind(e) === 'nologin') {
+    e = ftErr(liffError, 'liff');
+    retry = () => location.reload();
+  }
+  viewErr[view] = e;
+  $(VIEW_ERR_BOX[view]).classList.add('has-error');
+  if (view === 'board') $('boardTools').classList.add('has-error');   // แถบกรองอยู่นอก #viewBoard
+  ftErrorState($(ERR_EL[view]), e, Object.assign({
+    onRetry: retry,
+    onLogin: ensureLogin,
+    lineId: currentStaffId,
+    where: 'admin · ' + VIEWS[view].title,
+  }, opts));
+}
+
+function clearViewError(view) {
+  if (!viewErr[view]) return;
+  viewErr[view] = null;
+  $(VIEW_ERR_BOX[view]).classList.remove('has-error');
+  if (view === 'board') $('boardTools').classList.remove('has-error');
 }
 
 // แยก "เซสชันหมดอายุ" ออกจากความผิดพลาดอื่น (เน็ตหลุด / backend ล่ม)
@@ -162,8 +187,8 @@ function setMockReason(elId, err) {
 // ทางเดียวคือ login ใหม่ ซึ่งผู้ใช้เดาเองไม่ได้ถ้าระบบไม่บอก
 const isAuthError = (e) => /ยืนยันตัวตน|ID Token|เข้าสู่ระบบใหม่/.test((e && e.message) || '');
 
-// ไม่เด้งไปหน้า login เองอัตโนมัติ — ถ้า login ไม่ผ่านจะวนซ้ำไม่รู้จบ
-// ให้ผู้ใช้กดเองจากปุ่มบนแถบเตือนแทน
+// แถบเตือนเมื่อ "บันทึก" ไม่สำเร็จเพราะเซสชันหมดอายุ (โหลดไม่สำเร็จใช้หน้าสถานะแทน)
+// ไม่เด้งไปหน้า login เองอัตโนมัติ — ถ้า login ไม่ผ่านจะวนซ้ำไม่รู้จบ ให้ผู้ใช้กดเองจากปุ่มบนแถบ
 function setAuthExpired(on) {
   const el = $('authBanner');
   if (el) el.classList.toggle('hidden', !on);
@@ -277,37 +302,6 @@ function setBusy(el, on) {
   el.setAttribute('aria-busy', on ? 'true' : 'false');
 }
 
-// ---------- ข้อมูลตัวอย่าง (fallback เมื่อเรียก backend ไม่สำเร็จ) ----------
-const MOCK_NOW = Date.now();
-const hrsAgo = (h) => new Date(MOCK_NOW - h * 3600e3).toISOString();
-const MOCK = [
-  { id:125, code:'TK-125', detail:'ปริ้นเตอร์ที่ชั้น 3 พิมพ์ไม่ออก', category:'ฮาร์ดแวร์', branch:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'กัญญาภัทร', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(2), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:126, code:'TK-126', detail:'ต้องการตั้งค่าอีเมลในมือถือใหม่', category:'ซอฟต์แวร์', branch:'สาขาหาดใหญ่', province:'สงขลา', reporter:'นพดล', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(5), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:127, code:'TK-127', detail:'ลืมรหัสผ่านเข้าระบบ CRM', category:'ซอฟต์แวร์', branch:'สาขาเมืองตรัง', province:'ตรัง', reporter:'วิภาดา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(9), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:124, code:'TK-124', detail:'เน็ตหลุดบ่อยช่วงบ่าย', category:'เครือข่าย', branch:'สาขาเมืองนราธิวาส', province:'นราธิวาส', reporter:'ฮาซัน', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(96), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:123, code:'TK-123', detail:'จอมอนิเตอร์มีเส้นแนวตั้ง', category:'ฮาร์ดแวร์', branch:'สาขาเมืองยะลา', province:'ยะลา', reporter:'ปรีชา', assignee:null, status:STATUS.OPEN, createdAt:hrsAgo(120), acceptedAt:null, closedAt:null, pdfUrl:'' },
-  { id:122, code:'TK-122', detail:'ขอติดตั้งโปรแกรม AutoCAD', category:'ซอฟต์แวร์', branch:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'ประสิทธิ์', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(6), acceptedAt:hrsAgo(2), closedAt:null, pdfUrl:'' },
-  { id:121, code:'TK-121', detail:'ตั้งค่าเครื่องสแกนใหม่', category:'ฮาร์ดแวร์', branch:'สาขาเมืองพัทลุง', province:'พัทลุง', reporter:'สมหญิง', assignee:'สมคิด ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(28), acceptedAt:hrsAgo(20), closedAt:null, pdfUrl:'' },
-  { id:120, code:'TK-120', detail:'อัปเกรด RAM เครื่อง Design', category:'ฮาร์ดแวร์', branch:'สาขาหาดใหญ่', province:'สงขลา', reporter:'มานี', assignee:'วิชัย ไอที', status:STATUS.IN_PROGRESS, createdAt:hrsAgo(10), acceptedAt:hrsAgo(4), closedAt:null, pdfUrl:'' },
-  { id:119, code:'TK-119', detail:'อีเมลส่งออกไม่ได้', category:'ซอฟต์แวร์', branch:'สาขาเมืองปัตตานี', province:'ปัตตานี', reporter:'นูรีดา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(72), acceptedAt:hrsAgo(66), closedAt:hrsAgo(50), pdfUrl:'' },
-  { id:118, code:'TK-118', detail:'เปลี่ยนสาย LAN ใหม่', category:'เครือข่าย', branch:'สาขาเมืองสงขลา', province:'สงขลา', reporter:'สุรชัย', assignee:'สมคิด ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(30), acceptedAt:hrsAgo(28), closedAt:hrsAgo(24), pdfUrl:'' },
-  { id:117, code:'TK-117', detail:'ขอสิทธิ์เข้าระบบสารบรรณ', category:'อื่นๆ', branch:'สาขาเมืองสตูล', province:'สตูล', reporter:'ยะห์ยา', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(140), acceptedAt:hrsAgo(130), closedAt:hrsAgo(120), pdfUrl:'' },
-  { id:115, code:'TK-115', detail:'ตั้งค่าแชร์ปริ้นเตอร์', category:'ฮาร์ดแวร์', branch:'สาขาเบตง', province:'ยะลา', reporter:'อารีย์', assignee:'วิชัย ไอที', status:STATUS.CLOSED, createdAt:hrsAgo(50), acceptedAt:hrsAgo(48), closedAt:hrsAgo(26), pdfUrl:'' },
-];
-
-// หมวดหมู่ของข้อมูลตัวอย่าง (โหมดตัวอย่างไม่มี DB ให้ถามรายการหมวดหมู่)
-const MOCK_CATS = [{ id: 1, name: 'ฮาร์ดแวร์' }, { id: 2, name: 'ซอฟต์แวร์' }, { id: 3, name: 'เครือข่าย' }, { id: 4, name: 'อื่นๆ' }];
-let mockTickets = null;   // MOCK ที่ normalize แล้ว — โหมดตัวอย่างเปลี่ยนสถานะในนี้ (ไม่บันทึกจริง)
-
-// แบนเนอร์ "โหมดตัวอย่าง" ด้านบนใช้ร่วมกันระหว่างบอร์ดกับแดชบอร์ด (โหลดคนละชุด ล้มแยกกันได้)
-// users/kb มีแบนเนอร์ของตัวเองในหน้า
-const mockErr = { board: null, dashboard: null };
-function syncMockBanner() {
-  const on = (currentView === 'board' && usingMock) || (currentView === 'dashboard' && usingMockDash);
-  $('mockBanner').classList.toggle('hidden', !on);
-  setMockReason('mockReason', on ? mockErr[currentView] : null);
-}
-
 // ---------- โหลดบอร์ด (ทีละหน้า) ----------
 function boardParams() {
   return {
@@ -319,7 +313,7 @@ function boardParams() {
     sort: boardSort,
     pageSize: BOARD_PAGE,
     pages: { ...colPage },
-    facets: !boardCatsLive,   // รายการหมวดหมู่ของตัวกรอง ขอจาก DB แค่ครั้งแรก
+    facets: !boardCats.length,   // รายการหมวดหมู่ของตัวกรอง ขอจาก DB แค่ครั้งแรก
   };
 }
 
@@ -332,7 +326,7 @@ let boardBusy = false;      // กำลังรอหน้าใหม่ (�
 let boardWrites = 0;        // คำสั่งเขียนที่ยังรอผล — ระหว่างนี้อย่าเพิ่งโหลดบอร์ดใหม่ทับ
 let boardRefreshTimer = null;
 
-// opts.quiet = โหลดเบื้องหลังหลังแก้ข้อมูล (ไม่จางบอร์ด) · opts.retry = กดโหลดใหม่ (ลอง backend อีกครั้งแม้อยู่โหมดตัวอย่าง)
+// opts.quiet = โหลดเบื้องหลังหลังแก้ข้อมูล (ไม่จางบอร์ด)
 // opts.prefetch = status ของคอลัมน์ที่เพิ่งเปลี่ยนหน้า -> โหลดหน้าถัดไปของคอลัมน์นั้นรอไว้
 async function loadBoard(opts = {}) {
   const seq = ++boardSeq;
@@ -350,58 +344,41 @@ async function loadBoard(opts = {}) {
 
   if ((await liffReady) === false) return;   // กำลังเด้งไปหน้า login (ดูคอมเมนต์ที่ liffReady)
   try {
-    let res, mock = false;
-    if (usingMock && !opts.retry) { res = mockBoard(params); mock = true; }   // ไม่ยิง backend ที่เพิ่งล้มซ้ำทุกครั้งที่เปลี่ยนหน้า
-    else res = await fetchPage('getBoard', params);
+    const res = await fetchPage('getBoard', params);
     if (seq !== boardSeq) return;   // ผู้ใช้เปลี่ยนหน้า/ตัวกรองต่อไปแล้ว
-    usingMock = mock;
-    applyBoard(res, mock);
-    if (!mock) {
-      if (boardIsLanding(params)) writeViewCache(BOARD_CACHE_KEY, closedDays, res);
-      setStale('board', false);
-      mockErr.board = null;
-      setAuthExpired(false);
-      const st = opts.prefetch, c = st && boardCols[st];
-      if (c && c.page * BOARD_PAGE < c.total) {
-        prefetchPage('getBoard', { ...boardParams(), pages: { ...colPage, [st]: c.page + 1 } });
-      }
+    applyBoard(res);
+    clearViewError('board');
+    boardLoaded = true;
+    if (boardIsLanding(params)) writeViewCache(BOARD_CACHE_KEY, closedDays, res);
+    setStale('board', false);
+    const st = opts.prefetch, c = st && boardCols[st];
+    if (c && c.page * BOARD_PAGE < c.total) {
+      prefetchPage('getBoard', { ...boardParams(), pages: { ...colPage, [st]: c.page + 1 } });
     }
   } catch (e) {
     if (seq !== boardSeq) return;
-    mockErr.board = e;
-    if (isAuthError(e)) setAuthExpired(true);   // เน็ตหลุดไม่ต้องขึ้น ให้ขึ้นเฉพาะเซสชันหมดอายุ
-    if (!boardCols || usingMock) {
-      // ไม่มีอะไรให้ดูเลย -> ข้อมูลจำลอง · ถ้ามีของจริงจากแคช/หน้าก่อนอยู่แล้ว ไม่เอาของปลอมไปทับ
-      usingMock = true;
-      applyBoard(mockBoard(params), true);
-    } else {
-      ftToast('โหลดตารางงานไม่สำเร็จ: ' + e.message, 'error');
-    }
+    // โหลดไม่สำเร็จ = หน้าสถานะแทนเสมอ แม้มีข้อมูลเก่า/แคชอยู่ (ข้อมูลเก่าอาจทำให้เข้าใจผิดว่าเป็นปัจจุบัน)
+    setStale('board', false);
+    showViewError('board', e, () => loadBoard());
   } finally {
     if (seq === boardSeq) {
-      boardLoaded = true;
       boardBusy = false;
       setBusy($('board'), false);
       syncBoardCount();
-      syncMockBanner();
     }
   }
 }
 
-// mock = รายการเป็น object ใน mockTickets อยู่แล้ว (ไม่ normalize ซ้ำ — แก้สถานะต้องไปถึงตัวจริง)
-function applyBoard(res, mock) {
+function applyBoard(res) {
   boardCols = {};
   (res.columns || []).forEach(c => {
     boardCols[c.status] = {
-      tickets: mock ? c.tickets : (c.tickets || []).map(normalize),
+      tickets: (c.tickets || []).map(normalize),
       total: Number(c.total) || 0, all: Number(c.all) || 0, page: Number(c.page) || 1,
     };
     colPage[c.status] = boardCols[c.status].page;   // server ปรับให้ถ้าหน้าที่ขอเลยหน้าสุดท้าย
   });
-  if (res.categories) {
-    boardCats = res.categories.map(c => ({ id: c.id, name: cleanCategory(c.name) || c.name }));
-    boardCatsLive = !mock;
-  }
+  if (res.categories) boardCats = res.categories.map(c => ({ id: c.id, name: cleanCategory(c.name) || c.name }));
   tickets = Object.values(boardCols).flatMap(c => c.tickets);
   render();
 }
@@ -414,33 +391,6 @@ function refreshBoardSoon() {
     if (boardWrites > 0) return refreshBoardSoon();
     loadBoard({ quiet: true });
   }, 1500);
-}
-
-// โหมดตัวอย่าง: ทำแบบเดียวกับ getBoard ฝั่ง server แต่กับข้อมูลจำลองในเครื่อง
-function mockBoard(p) {
-  if (!mockTickets) mockTickets = MOCK.map(normalize);
-  const q = p.q.toLowerCase();
-  const cat = p.categoryId ? (MOCK_CATS.find(c => c.id === p.categoryId) || {}).name : '';
-  const cut = p.closedDays > 0 ? Date.now() - p.closedDays * DAY_MS : 0;
-  const match = (t) =>
-    (!cat || t.category === cat) &&
-    (!p.province || t.province.includes(p.province)) &&
-    (!p.mine || (!!t.assignee && t.assignee === currentStaff)) &&
-    (!cut || t.status !== STATUS.CLOSED || !t.closedAt || parseT(t.closedAt) >= cut) &&
-    (!q || [t.code, t.detail, t.reporter, t.assignee, t.branch, t.department, t.office, t.province, t.category]
-      .some(v => String(v || '').toLowerCase().includes(q)));
-  const key = (t) => parseT(
-    t.status === STATUS.CLOSED      ? (t.closedAt   || t.createdAt) :
-    t.status === STATUS.IN_PROGRESS ? (t.acceptedAt || t.createdAt) : t.createdAt) || 0;
-  const columns = COLUMNS.map(col => {
-    const all = mockTickets.filter(t => t.status === col.status);
-    const items = all.filter(match).sort((a, b) =>
-      p.sort === 'old' ? (key(a) - key(b) || a.id - b.id) : (key(b) - key(a) || b.id - a.id));
-    const page = Math.min(p.pages[col.status] || 1, Math.max(1, Math.ceil(items.length / p.pageSize)));
-    return { status: col.status, page, total: items.length, all: all.length,
-             tickets: items.slice((page - 1) * p.pageSize, page * p.pageSize) };
-  });
-  return { status: 'success', columns, categories: MOCK_CATS };
 }
 
 // เติมค่าที่อาจขาดจาก backend ให้ครบทุก field ที่หน้าเว็บใช้
@@ -460,7 +410,9 @@ function normalize(t) {
     createdAt: t.createdAt || null,
     acceptedAt: t.acceptedAt || null,
     closedAt: t.closedAt || null,
-    pdfUrl: t.pdfUrl || ''
+    pdfUrl: t.pdfUrl || '',
+    imageUrl: t.imageUrl || '',   // รูปอาการเสีย (Drive) — backend ก่อน 2026-11-02 ไม่ส่งมา
+    phone: t.phone || ''          // เบอร์ภายในตอนแจ้ง — ตั๋วเก่ามีแค่ในเอกสาร PDF
   };
 }
 
@@ -493,16 +445,20 @@ function render() {
     // max-w ต้องปลดที่ md ด้วย (md:max-w-none) ไม่งั้นมันคุมทับ w-[320px] บนเดสก์ท็อป
     // ทำให้คอลัมน์กว้าง 340px แล้วบอร์ดเลื่อนแนวนอนทั้งที่จอกว้างพอ
     // ขยายเป็น 360px เฉพาะ 2xl (1536px+) ซึ่งกว้างพอให้ 3 คอลัมน์อยู่ครบโดยไม่ต้องเลื่อน
-    colEl.className = 'board-col w-[86vw] max-w-[340px] md:max-w-none md:w-[320px] 2xl:w-[360px] shrink-0 flex flex-col rounded-xl border border-slate-200 ' + col.body;
+    colEl.className = 'board-col col-surface w-[86vw] max-w-[340px] md:max-w-none md:w-[320px] 2xl:w-[360px] shrink-0 flex flex-col rounded-2xl' +
+      (col.status === mobileCol ? ' is-mobile-active' : '');
     colEl.dataset.status = col.status;
+    colEl.id = 'boardCol' + col.status;
+    colEl.setAttribute('role', 'tabpanel');
 
+    // ยอดเป็นป้ายกลม — กรองอยู่ ("5/23") ป้ายเป็นสีแบรนด์ให้รู้ว่าไม่ใช่ทั้งหมด
     colEl.innerHTML = `
-      <div class="flex items-center justify-between gap-2 px-3.5 md:px-4 py-3 shrink-0">
-        <div class="flex items-center gap-2 font-semibold min-w-0 ${col.head}">
-          <span class="w-2.5 h-2.5 rounded-full shrink-0 ${col.dot}"></span><span class="truncate">${col.title}</span>
-          <span class="text-slate-400 font-normal text-sm hidden sm:inline">(${col.en})</span>
+      <div class="flex items-center justify-between gap-2 px-4 pt-3.5 pb-3 shrink-0">
+        <div class="flex items-center gap-2 font-semibold text-[15px] min-w-0" style="color:var(--ink)">
+          <span class="w-2 h-2 rounded-full shrink-0 ${col.dot}"></span><span class="truncate">${col.title}</span>
+          <span class="font-normal text-[13px] hidden sm:inline" style="color:var(--ink-faint)">${col.en}</span>
         </div>
-        <span class="text-sm font-bold shrink-0 ${c.total !== c.all ? 'text-brand-600' : 'text-slate-400'}">${c.total !== c.all ? c.total + '/' + c.all : c.all}</span>
+        <span class="col-count shrink-0 tabular-nums ${c.total !== c.all ? 'is-filtered' : ''}">${c.total !== c.all ? c.total + '/' + c.all : c.all}</span>
       </div>
       <div class="col-scroll flex-1 overflow-y-auto px-3 pb-3 flex flex-col gap-3" data-drop="${col.status}"></div>
       <div class="col-pager shrink-0 flex items-center justify-between gap-2 px-3 pb-3"></div>
@@ -531,7 +487,27 @@ function render() {
     });
     board.appendChild(colEl);
   }
+  renderBoardTabs();
   syncBoardTools();
+  syncTicketDrawer();
+}
+
+// แท็บสถานะบนมือถือ — แสดงทีละคอลัมน์ (CSS ใน admin.html ซ่อนคอลัมน์ที่ไม่มี .is-mobile-active)
+function renderBoardTabs() {
+  const box = $('boardTabs');
+  if (!box || !boardCols) return;
+  box.innerHTML = COLUMNS.map(col => {
+    const c = boardCols[col.status] || { total: 0 };
+    return `<button type="button" role="tab" data-col="${col.status}" aria-controls="boardCol${col.status}"
+      aria-selected="${col.status === mobileCol}" class="board-tab rounded-lg px-1 py-1.5 min-h-[40px] text-[13px] font-medium text-slate-500 inline-flex items-center justify-center gap-1.5 min-w-0">
+      <span class="w-1.5 h-1.5 rounded-full shrink-0 ${col.dot}"></span><span class="truncate">${col.tab}</span><span class="tabular-nums shrink-0">${c.total}</span></button>`;
+  }).join('');
+  box.querySelectorAll('.board-tab').forEach(b => b.addEventListener('click', () => {
+    mobileCol = +b.dataset.col;
+    localStorage.setItem('ft_mobile_col', String(mobileCol));
+    box.querySelectorAll('.board-tab').forEach(x => x.setAttribute('aria-selected', String(+x.dataset.col === mobileCol)));
+    document.querySelectorAll('#board .board-col').forEach(c => c.classList.toggle('is-mobile-active', +c.dataset.status === mobileCol));
+  }));
 }
 
 // options = [[value, label], ...] — หมวดหมู่มาจาก DB (เพิ่มได้) ไม่ hardcode
@@ -559,6 +535,7 @@ const toggleBtn = (el, on) => {
 function syncBoardCount() {
   const cnt = $('boardCount');
   if (!cnt) return;
+  if (viewErr.board) { cnt.textContent = ''; return; }   // หน้าสถานะแสดงอยู่ — ยอดของข้อมูลเก่าไม่มีความหมาย
   if (boardBusy || !boardCols) {
     cnt.innerHTML = `<span class="inline-flex items-center gap-1.5">${icon('loader-circle', 'w-3.5 h-3.5 animate-spin')}กำลังโหลด…</span>`;
     return;
@@ -585,6 +562,10 @@ function syncBoardTools() {
   if (cd) cd.value = String(closedDays);
   const sc = $('boardSort');
   if (sc) sc.value = boardSort;
+  // มือถือ: ตัวกรองพับอยู่ในปุ่ม -> บอกจำนวนที่ใช้อยู่ ไม่งั้นลืมว่ากรองไว้แล้วนึกว่างานหาย
+  const n = [boardCat !== 'all', boardProv !== 'all', boardMine, boardSort !== 'new', closedDays !== 7].filter(Boolean).length;
+  const badge = $('boardFilterBadge');
+  if (badge) { badge.textContent = n; badge.classList.toggle('hidden', !n); }
 }
 
 function initBoardTools() {
@@ -616,8 +597,14 @@ function initBoardTools() {
   });
   $('boardReset')?.addEventListener('click', () => {
     boardSearch = ''; boardCat = 'all'; boardProv = 'all'; boardMine = false; boardSort = 'new';
+    closedDays = 7;
+    localStorage.setItem('ft_closed_days', '7');
     if (s) s.value = '';
     applyBoardFilter();
+  });
+  $('boardFilterToggle')?.addEventListener('click', (e) => {
+    const open = $('boardFilters').classList.toggle('hidden') === false;
+    e.currentTarget.setAttribute('aria-expanded', String(open));
   });
 }
 
@@ -629,14 +616,16 @@ function cardEl(t) {
     : (Date.now() - (parseT(t.createdAt) || Date.now())) / DAY_MS;
   const isOld = ageDays >= agingDays;
 
-  el.className = (IS_TOUCH ? '' : 'card-drag ') + 'tk-card bg-white rounded-lg border border-slate-200 p-3.5 shadow-sm hover:shadow-md transition-shadow'
+  el.className = (IS_TOUCH ? '' : 'card-drag ') + 'tk-card bg-white rounded-xl border p-3.5'   /* เส้นขอบ/เงา/hover อยู่ที่ .board-col .tk-card ใน admin.html */
     + (isOld ? ' tk-old' : '');
   el.draggable = !IS_TOUCH;   // ดูเหตุผลที่ IS_TOUCH
   el.dataset.id = t.id;
 
+  // ผู้รับงานอยู่ในบรรทัดเวลา ส่วนแถวล่างเป็นผู้แจ้งเสมอ (เดิมรับงานแล้วชื่อผู้แจ้งหายจากการ์ด)
+  const by = t.assignee ? ' · ' + t.assignee : '';
   const timeLine = t.status === STATUS.CLOSED
-    ? (t.closedAt ? `ปิดงาน: ${timeAgo(t.closedAt)}` : '')
-    : (t.status === STATUS.IN_PROGRESS && t.acceptedAt ? `เริ่ม: ${timeAgo(t.acceptedAt)}` : `แจ้ง: ${timeAgo(t.createdAt)}`);
+    ? (t.closedAt ? `ปิดงาน ${ftWhen(t.closedAt)}${by}` : '')
+    : (t.status === STATUS.IN_PROGRESS && t.acceptedAt ? `รับงาน ${ftWhen(t.acceptedAt)}${by}` : `แจ้ง ${ftWhen(t.createdAt)}`);
 
   // ปุ่มตามคอลัมน์ — บนมือถือปุ่มพวกนี้คือ "ทางเดียว" ที่เปลี่ยนสถานะได้ (ลากไม่ได้)
   // จึงทำเป็นปุ่มมีพื้นหลัง + เป้ากดใหญ่ (.card-act) ไม่ใช่ตัวหนังสือเปล่าๆ
@@ -659,10 +648,11 @@ function cardEl(t) {
     <div class="flex items-start justify-between gap-2 mb-1.5">
       <span class="font-bold text-slate-700 inline-flex items-center gap-1.5 min-w-0">
         <span class="truncate">${escapeHtml(t.code)}</span>
-        ${isOld ? `<span class="tk-age shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">ค้าง ${Math.floor(ageDays)} วัน</span>` : ''}
+        ${isOld ? `<span class="tk-age shrink-0 text-[11px] font-semibold px-1.5 py-0.5 rounded bg-red-100 text-red-700">ค้าง ${Math.floor(ageDays)} วัน</span>` : ''}
       </span>
       <span class="inline-flex items-center gap-1 shrink-0">
-        ${t.category ? `<span class="tk-cat text-[11px] px-2 py-0.5 rounded-full ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}
+        ${t.imageUrl ? `<span class="text-slate-400" title="มีรูปแนบ">${icon('camera', 'w-3.5 h-3.5')}</span>` : ''}
+        ${t.category ? `<span class="tk-cat text-xs px-2 py-0.5 rounded-full ${catColor(t.category)}">${escapeHtml(t.category)}</span>` : ''}
         ${isAdminUser() ? `<button data-act="cancel" class="tk-del text-slate-400 hover:text-red-600 p-1 -m-1 rounded" title="ยกเลิกงาน" aria-label="ยกเลิกงาน ${escapeHtml(t.code)}">${icon('trash-2', 'w-3.5 h-3.5')}</button>` : ''}
       </span>
     </div>
@@ -670,11 +660,11 @@ function cardEl(t) {
     ${place ? `<div class="tk-place text-xs text-slate-500 mb-2.5 flex items-center gap-1 min-w-0">${icon('map-pin', 'w-3.5 h-3.5')}<span class="truncate">${escapeHtml(place)}</span></div>` : ''}
     <div class="tk-meta flex items-center justify-between gap-2 text-xs text-slate-500 border-t border-slate-100 pt-2.5">
       <span class="inline-flex items-center gap-1 min-w-0">
-        ${icon('user', 'w-3.5 h-3.5')}<span class="truncate">${escapeHtml(t.assignee || t.reporter)}</span>
+        ${icon('user', 'w-3.5 h-3.5')}<span class="truncate">${escapeHtml(t.reporter)}</span>
       </span>
       ${action}
     </div>
-    ${timeLine ? `<div class="tk-time text-[11px] text-slate-400 mt-1.5 inline-flex items-center gap-1">${icon('clock', 'w-3.5 h-3.5')}${timeLine}</div>` : ''}
+    ${timeLine ? `<div class="tk-time text-xs text-slate-400 mt-1.5 inline-flex items-center gap-1">${icon('clock', 'w-3.5 h-3.5')}${timeLine}</div>` : ''}
   `;
 
   el.addEventListener('dragstart', (e) => {
@@ -682,6 +672,15 @@ function cardEl(t) {
     el.classList.add('drag-ghost');
   });
   el.addEventListener('dragend', () => el.classList.remove('drag-ghost'));
+
+  // กดที่การ์ด (นอกปุ่ม) = เปิดรายละเอียด · คีย์บอร์ด: Tab มาที่การ์ดแล้ว Enter
+  el.tabIndex = 0;
+  el.setAttribute('role', 'button');
+  el.setAttribute('aria-haspopup', 'dialog');
+  el.addEventListener('click', () => openTicket(t.id));
+  el.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target === el) { e.preventDefault(); openTicket(t.id); }
+  });
 
   el.querySelectorAll('[data-act]').forEach(btn => btn.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -696,6 +695,116 @@ function cardEl(t) {
   return el;
 }
 
+/* ---------- รายละเอียดตั๋ว (กดที่การ์ด) ----------
+   ทุกอย่างที่ต้องใช้ตอนลงมือ: อาการเต็ม, รูป, ผู้แจ้ง + เบอร์โทรกลับ, สังกัด, ลำดับเวลา, เอกสาร, ปุ่มเปลี่ยนสถานะ
+   (เดิมเอกสารที่มีเบอร์โทรเปิดได้เฉพาะคอลัมน์เสร็จสิ้น — ระหว่างทำงานจึงหาเบอร์ผู้แจ้งไม่เจอ) */
+let drawerId = null;
+let drawerReturnFocus = null;
+const STATUS_PILL = {
+  1: ['รอรับเรื่อง', 'bg-amber-100 text-amber-800'],
+  2: ['กำลังดำเนินการ', 'bg-blue-100 text-blue-800'],
+  3: ['เสร็จสิ้น', 'bg-emerald-100 text-emerald-800'],
+};
+
+function openTicket(id) {
+  const t = tickets.find(x => x.id === id);
+  if (!t) return;
+  if (drawerId == null) drawerReturnFocus = document.activeElement;
+  drawerId = id;
+  renderTicketDrawer(t);
+  $('ticketDrawer').classList.remove('hidden');
+  $('tdClose').focus();
+}
+
+function closeTicket() {
+  if (drawerId == null) return;
+  drawerId = null;
+  $('ticketDrawer').classList.add('hidden');
+  if (drawerReturnFocus && document.contains(drawerReturnFocus)) drawerReturnFocus.focus();
+}
+
+// บอร์ดวาดใหม่ (เปลี่ยนสถานะ / โหลดเบื้องหลัง) -> แผงที่เปิดอยู่ตามข้อมูลล่าสุด · ตั๋วไม่อยู่ในหน้านี้แล้ว = ปิด
+function syncTicketDrawer() {
+  if (drawerId == null) return;
+  const t = tickets.find(x => x.id === drawerId);
+  if (t) renderTicketDrawer(t); else closeTicket();
+}
+
+function renderTicketDrawer(t) {
+  const [stText, stCls] = STATUS_PILL[t.status] || STATUS_PILL[1];
+  $('tdTitle').innerText = t.code;
+  $('tdStatus').className = 'text-xs font-medium px-2 py-0.5 rounded-full ' + stCls;
+  $('tdStatus').innerText = stText;
+  $('tdCat').className = t.category ? 'text-xs px-2 py-0.5 rounded-full ' + catColor(t.category) : 'hidden';
+  $('tdCat').innerText = t.category || '';
+  $('tdSub').innerText = 'แจ้งเมื่อ ' + ftDate(t.createdAt);
+
+  const row = (ic, label, html) => `
+    <div class="flex gap-3 py-2.5">
+      <span class="w-5 shrink-0 mt-0.5 text-slate-400">${icon(ic, 'w-4 h-4')}</span>
+      <div class="min-w-0"><div class="text-xs" style="color:var(--ink-muted)">${label}</div>
+        <div class="text-sm break-words" style="color:var(--ink)">${html}</div></div>
+    </div>`;
+  // เบอร์เก็บตั้งแต่ 2026-11-02 — ตั๋วก่อนหน้านั้นมีแค่ในเอกสาร
+  const phone = t.phone
+    ? `<a href="tel:${escapeHtml(t.phone.replace(/[^0-9+]/g, ''))}" class="font-medium text-brand-700 hover:underline">${escapeHtml(t.phone)}</a>`
+    : `<span style="color:var(--ink-muted)">${t.pdfUrl ? 'ไม่ได้บันทึกไว้ — ดูในเอกสาร' : 'ไม่ได้ระบุ'}</span>`;
+  const place = [t.branch || t.office, t.department].filter(Boolean).map(escapeHtml).join('<br>') || '<span style="color:var(--ink-muted)">ไม่ระบุ</span>';
+  const thumb = ftDriveThumb(t.imageUrl, 900);
+  const ageDays = Math.floor((Date.now() - (parseT(t.createdAt) || Date.now())) / DAY_MS);
+  const step = (done, label, when) => `
+    <li class="flex gap-3">
+      <span class="mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${done ? 'bg-brand-600' : 'bg-slate-200'}"></span>
+      <div class="min-w-0 pb-3"><div class="text-sm font-medium" style="color:${done ? 'var(--ink)' : 'var(--ink-muted)'}">${label}</div>
+        ${when ? `<div class="text-xs" style="color:var(--ink-muted)">${when}</div>` : ''}</div>
+    </li>`;
+
+  $('tdBody').innerHTML = `
+    <p class="text-[15px] leading-relaxed whitespace-pre-wrap" style="color:var(--ink)">${escapeHtml(t.detail)}</p>
+    ${thumb ? `
+      <a href="${escapeHtml(t.imageUrl)}" target="_blank" rel="noopener" class="block space-y-1.5">
+        <img src="${escapeHtml(thumb)}" alt="รูปที่ผู้แจ้งแนบมา" loading="lazy" onerror="this.remove()" class="w-full max-h-64 object-cover rounded-xl border bg-slate-100" style="border-color:var(--line)">
+        <span class="inline-flex items-center gap-1.5 text-sm text-brand-700">${icon('camera', 'w-4 h-4')}รูปที่ผู้แจ้งแนบมา · เปิดขนาดเต็ม${icon('external-link', 'w-3.5 h-3.5')}</span>
+      </a>` : ''}
+    <div class="rounded-xl border px-3 divide-y" style="border-color:var(--line)">
+      ${row('user', 'ผู้แจ้ง', escapeHtml(t.reporter || '-'))}
+      ${row('phone', 'เบอร์โทรภายใน', phone)}
+      ${row('map-pin', 'สังกัด', place)}
+      ${row('wrench', 'ผู้รับผิดชอบ', t.assignee ? escapeHtml(t.assignee) : '<span style="color:var(--ink-muted)">ยังไม่มีผู้รับงาน</span>')}
+    </div>
+    <div>
+      <div class="text-xs font-medium mb-2" style="color:var(--ink-muted)">ลำดับเวลา</div>
+      <ol>
+        ${step(true, 'แจ้งเรื่อง', escapeHtml(ftDate(t.createdAt)))}
+        ${step(!!t.acceptedAt || t.status !== STATUS.OPEN, 'รับเรื่อง', t.acceptedAt
+            ? escapeHtml(ftDate(t.acceptedAt) + (t.assignee ? ' · ' + t.assignee : ''))
+            : (t.status === STATUS.OPEN ? 'รอมา ' + (ageDays ? ageDays + ' วัน' : 'ไม่ถึงวัน') : ''))}
+        ${step(t.status === STATUS.CLOSED, 'เสร็จสิ้น', t.closedAt ? escapeHtml(ftDate(t.closedAt)) : '')}
+      </ol>
+    </div>`;
+
+  // ปุ่ม: ยกเลิกงาน (แอดมิน) ชิดซ้าย · เอกสาร + การกระทำหลักชิดขวา
+  const btn = 'inline-flex items-center justify-center gap-1.5 px-4 min-h-[44px] rounded-xl text-sm font-semibold transition-colors';
+  const main = t.status === STATUS.OPEN
+    ? `<button type="button" data-td="accept" class="${btn} bg-brand-600 text-white hover:bg-brand-700">รับงาน${icon('arrow-right', 'w-4 h-4')}</button>`
+    : t.status === STATUS.IN_PROGRESS
+      ? `<button type="button" data-td="close" class="${btn} bg-emerald-600 text-white hover:bg-emerald-700">${icon('check', 'w-4 h-4')}ปิดงาน</button>`
+      : `<button type="button" data-td="reopen" class="${btn} border bg-white text-slate-600 hover:bg-slate-50" style="border-color:var(--line-strong)">${icon('rotate-ccw', 'w-4 h-4')}เปิดใหม่</button>`;
+  $('tdActions').innerHTML = `
+    ${isAdminUser() ? `<button type="button" data-td="cancel" class="${btn} text-red-600 hover:bg-red-50 px-3">${icon('trash-2', 'w-4 h-4')}ยกเลิกงาน</button>` : ''}
+    <span class="flex-1"></span>
+    ${t.pdfUrl ? `<button type="button" data-td="pdf" class="${btn} border bg-white text-slate-700 hover:bg-slate-50" style="border-color:var(--line-strong)">${icon('file-text', 'w-4 h-4')}เอกสาร</button>` : ''}
+    ${main}`;
+  $('tdActions').querySelectorAll('[data-td]').forEach(b => b.addEventListener('click', () => {
+    const act = b.dataset.td;
+    if (act === 'accept') moveTicket(t.id, STATUS.IN_PROGRESS);
+    if (act === 'close')  requestClose(t.id);
+    if (act === 'reopen') moveTicket(t.id, STATUS.OPEN);
+    if (act === 'pdf')    openPdf(t);
+    if (act === 'cancel') cancelTicket(t);
+  }));
+}
+
 // ---------- ยกเลิกงาน (Admin) — soft delete: หายจากบอร์ด/แดชบอร์ด แต่แถวและ PDF ยังอยู่ ----------
 // ไม่ทำ optimistic update: ยกเลิกแล้วย้อนเองไม่ได้จากหน้าเว็บ ต้องรอ backend ยืนยันก่อนเอาออก
 async function cancelTicket(t) {
@@ -705,17 +814,14 @@ async function cancelTicket(t) {
   if (!ok) return;
   boardWrites++;
   try {
-    if (!usingMock) {
-      const res = await callBackend('deleteTicket', { ticketId: t.id });
-      if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ยกเลิกงานไม่สำเร็จ');
-    }
+    const res = await callBackend('deleteTicket', { ticketId: t.id });
+    if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ยกเลิกงานไม่สำเร็จ');
     const c = boardCols && boardCols[t.status];
     if (c) { c.tickets = c.tickets.filter(x => x.id !== t.id); c.total--; c.all--; }
     tickets = tickets.filter(x => x.id !== t.id);
-    if (mockTickets) mockTickets = mockTickets.filter(x => x.id !== t.id);
     render();
     ftToast(`ยกเลิกงาน ${t.code} แล้ว`, 'success');
-    if (!usingMock) afterTicketWrite();
+    afterTicketWrite();
   } catch (e) {
     ftToast(e.message, 'error');
     if (isAuthError(e)) setAuthExpired(true);
@@ -773,8 +879,6 @@ async function moveTicket(id, toStatus, resolutionText) {
   relocate(t, from, toStatus);
   render();
 
-  if (usingMock) return; // โหมดตัวอย่าง: ไม่ยิง backend
-
   boardWrites++;
   try {
     const res = isAccept
@@ -805,6 +909,7 @@ async function moveTicket(id, toStatus, resolutionText) {
     Object.assign(t, prev); // revert
     relocate(t, toStatus, from);
     render();
+    if (isAuthError(e)) setAuthExpired(true);
     ftToast('บันทึกไม่สำเร็จ: ' + e.message, 'error');
   } finally {
     boardWrites--;
@@ -913,8 +1018,7 @@ function finishClose(resolutionText) {
    ============================================================================= */
 
 let dashData = null;       // คำตอบล่าสุดของ getDashboard
-let dashLoaded = false;    // false = เข้าหน้าครั้งหน้าต้องโหลดใหม่ (มีการแก้ตั๋ว / เปลี่ยนเกณฑ์ค้าง)
-let usingMockDash = false;
+let dashLoaded = false;    // false = เข้าหน้าครั้งหน้าต้องโหลดใหม่ (ยังไม่สำเร็จ / มีการแก้ตั๋ว / เปลี่ยนเกณฑ์ค้าง)
 let dashSeq = 0;
 
 async function loadDashboard() {
@@ -930,50 +1034,17 @@ async function loadDashboard() {
     const res = await fetchPage('getDashboard', { agingDays });
     if (seq !== dashSeq) return;
     dashData = res;
-    usingMockDash = false;
+    dashLoaded = true;
+    clearViewError('dashboard');
     writeViewCache(DASH_CACHE_KEY, agingDays, res);
     setStale('dashboard', false);
-    mockErr.dashboard = null;
-    setAuthExpired(false);
+    if (currentView === 'dashboard') renderDashboard();
   } catch (e) {
     if (seq !== dashSeq) return;
-    mockErr.dashboard = e;
-    if (isAuthError(e)) setAuthExpired(true);
-    // มีของจริงจากแคชอยู่แล้ว ไม่เอาของปลอมไปทับ (แถบ "ข้อมูลเมื่อ..." ยังบอกว่าเก่า)
-    if (!dashData || usingMockDash) {
-      dashData = dashFromTickets(MOCK.map(normalize));
-      usingMockDash = true;
-      setStale('dashboard', false);
-    } else {
-      ftToast('โหลดแดชบอร์ดไม่สำเร็จ: ' + e.message, 'error');
-    }
+    // หน้าสถานะแทนเสมอ แม้มีตัวเลขจากแคช (ตัวเลขเก่าบนแดชบอร์ดอ่านแล้วเข้าใจผิดง่ายที่สุด)
+    setStale('dashboard', false);
+    showViewError('dashboard', e, loadDashboard);
   }
-  dashLoaded = true;
-  syncMockBanner();
-  if (currentView === 'dashboard') renderDashboard();
-}
-
-// โหมดตัวอย่าง: สร้างคำตอบรูปเดียวกับ getDashboard จากตั๋วจำลอง (แถวละ n = 1 แล้ว mergeCounts รวมให้)
-function dashFromTickets(all) {
-  const now = Date.now();
-  const gaps = (field) => all.map(t => { const z = parseT(t[field]), c = parseT(t.createdAt); return (z && c) ? z - c : null; })
-    .filter(x => x != null);
-  const acc = gaps('acceptedAt'), cls = gaps('closedAt');
-  const open = all.filter(t => t.status === STATUS.OPEN);
-  return {
-    kpi: {
-      total: all.length, open: open.length,
-      prog: all.filter(t => t.status === STATUS.IN_PROGRESS).length,
-      done: all.filter(t => t.status === STATUS.CLOSED).length,
-      acceptAvgMs: mean(acc), acceptN: acc.length, closeAvgMs: mean(cls), closeN: cls.length,
-      aging: open.filter(t => now - (parseT(t.createdAt) || now) > agingDays * DAY_MS).length,
-    },
-    categories: all.map(t => ({ name: t.category, n: 1 })),
-    provinces: all.map(t => ({ province: t.province, office: t.office, n: 1 })),
-    staff: all.filter(t => t.assignee).map(t => ({ name: t.assignee, n: 1 })),
-    oldest: [...open].sort((a, b) => parseT(a.createdAt) - parseT(b.createdAt)).slice(0, 6),
-    trend: all.map(t => ({ d: dayKey(new Date(parseT(t.createdAt) || 0)), n: 1 })),
-  };
 }
 
 // "YYYY-MM-DD" ตามเวลาเครื่อง — ใช้จับคู่กับยอดรายวันจาก server (จัดกลุ่มตามเวลาไทย)
@@ -1002,9 +1073,9 @@ function barRow(label, value, max, color) {
   const pct = max > 0 ? Math.max(2, Math.round(value / max * 100)) : 0;
   const el = document.createElement('div');
   el.innerHTML = `
-    <div class="flex items-center justify-between gap-2 mb-1">
-      <span class="text-xs truncate" style="color:var(--ink-2)">${escapeHtml(label)}</span>
-      <span class="text-xs font-bold tabular-nums" style="color:var(--ink)">${value}</span>
+    <div class="flex items-center justify-between gap-2 mb-1.5">
+      <span class="text-[13px] truncate" style="color:var(--ink-2)">${escapeHtml(label)}</span>
+      <span class="text-[13px] font-semibold tabular-nums" style="color:var(--ink)">${value}</span>
     </div>
     <div class="viz-bar-track"><div class="viz-bar-fill" style="width:${pct}%;background:${color}"></div></div>`;
   return el;
@@ -1025,6 +1096,10 @@ function renderDashboard() {
   $('kpiOpenPct').innerText = `Open · ${pct(num(k.open))}%`;
   $('kpiProgPct').innerText = `In Progress · ${pct(num(k.prog))}%`;
   $('kpiDonePct').innerText = `Closed · ${pct(num(k.done))}%`;
+  // แถบสัดส่วนเทียบตั๋วทั้งหมด (ตัวเลข % อยู่ใต้แถบแล้ว แถบจึงเป็นภาพประกอบ ไม่ใช่ข้อมูลเพียงทางเดียว)
+  $('kpiOpenBar').style.width = pct(num(k.open)) + '%';
+  $('kpiProgBar').style.width = pct(num(k.prog)) + '%';
+  $('kpiDoneBar').style.width = pct(num(k.done)) + '%';
 
   // ---- SLA ---- (เวลาเฉลี่ยเป็น ms · null = ยังไม่มีตั๋วให้เฉลี่ย)
   const ms = (v) => (v == null ? null : Number(v));
@@ -1037,6 +1112,9 @@ function renderDashboard() {
   // agingDays ตั้งค่าได้ที่หน้า Settings (ค่าเริ่มต้น 3 วัน) — server นับตามค่าที่ส่งไป
   $('slaAging').innerText = num(k.aging);
   $('slaAgingLabel').innerText = `ค้างเกิน ${agingDays} วัน (ยังไม่รับ)`;
+  // มีงานค้างจริง = สถานะเตือน (ไอคอนส้ม + ข้อความ) · ไม่มี = เทากลางๆ ไม่ต้องดึงสายตา
+  $('slaAgingIcon').classList.toggle('is-warn', num(k.aging) > 0);
+  $('slaAgingNote').innerText = num(k.aging) > 0 ? 'ต้องเร่งจัดการ' : 'ไม่มีงานค้าง';
 
   // ---- หมวดหมู่ / พื้นที่ / เจ้าหน้าที่ ----
   // ชื่อใน DB อาจมี emoji/วงเล็บอังกฤษ -> ทำความสะอาดแล้วรวมยอดที่ซ้ำกัน
@@ -1229,15 +1307,6 @@ function renderMap(provCounts, total) {
    Users — จัดการบัญชีผู้ใช้และบทบาท (แอดมิน / เจ้าหน้าที่ IT / ผู้ใช้งานทั่วไป)
    ============================================================================= */
 
-const MOCK_USERS = [
-  // office = พื้นที่ · branch = สาขา · department = ส่วน (ตรงกับที่ getUsers ส่งมา)
-  { userId:'Umock-admin-001', name:'นายสองพัน แซ่ชั่น', position:'เจ้าหน้าที่ไอที', role:'admin', office:'สำนักงานสรรพสามิตภาคที่ 9', branch:'สำนักงานสรรพสามิตภาคที่ 9 (สำนักงานใหญ่)', department:'ส่วนเทคโนโลยีสารสนเทศ', province:'สงขลา', reported:2, assigned:5 },
-  { userId:'Umock-it-002', name:'วิชัย ไอที', position:'นักวิชาการคอมพิวเตอร์', role:'it', office:'สำนักงานสรรพสามิตภาคที่ 9', branch:'สำนักงานสรรพสามิตภาคที่ 9 (สำนักงานใหญ่)', department:'ส่วนเทคโนโลยีสารสนเทศ', province:'สงขลา', reported:0, assigned:4 },
-  { userId:'Umock-staff-003', name:'กัญญาภัทร ใจดี', position:'เจ้าหน้าที่ธุรการ', role:'Staff', office:'สำนักงานสรรพสามิตพื้นที่สงขลา', branch:'สาขาเมืองสงขลา', department:'ส่วนอำนวยการ', province:'สงขลา', reported:3, assigned:0 },
-  { userId:'Umock-staff-004', name:'นพดล รักงาน', position:'นักตรวจสอบภาษี', role:'Staff', office:'สำนักงานสรรพสามิตพื้นที่สงขลา', branch:'สาขาหาดใหญ่', department:'ส่วนบริหารจัดเก็บภาษี', province:'สงขลา', reported:1, assigned:0 },
-  { userId:'Umock-staff-005', name:'นูรีดา สาและ', position:'เจ้าหน้าที่ทั่วไป', role:'Staff', office:'สำนักงานสรรพสามิตพื้นที่ปัตตานี', branch:'สาขาเมืองปัตตานี', department:'ส่วนอำนวยการ', province:'ปัตตานี', reported:1, assigned:0 },
-];
-
 function normalizeUser(u) {
   return {
     userId: u.userId || '',
@@ -1257,58 +1326,30 @@ const usersParams = (page) => ({
   q: userSearch.trim(), role: userRoleFilter === 'all' ? '' : userRoleFilter, page, pageSize: USERS_PAGE,
 });
 
-let mockUsers = null;   // MOCK_USERS ที่ normalize แล้ว — โหมดตัวอย่างเปลี่ยนบทบาทในนี้
 let usersSeq = 0;
 
-// โหมดตัวอย่าง: ทำแบบเดียวกับ getUsers ฝั่ง server (กรอง/เรียง/แบ่งหน้า/นับ KPI) กับข้อมูลในเครื่อง
-function mockUsersPage(p) {
-  if (!mockUsers) mockUsers = MOCK_USERS.map(normalizeUser);
-  const q = p.q.toLowerCase();
-  const weight = { admin: 0, it: 1, staff: 2 };
-  const list = mockUsers
-    .filter(u => !p.role || u.role === p.role)
-    .filter(u => !q || [u.name, u.position, u.office, u.branch, u.department].some(s => String(s).toLowerCase().includes(q)))
-    .sort((a, b) => (weight[a.role] - weight[b.role]) || (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  const page = Math.min(p.page, Math.max(1, Math.ceil(list.length / p.pageSize)));
-  const count = (r) => mockUsers.filter(u => u.role === r).length;
-  return {
-    users: list.slice((page - 1) * p.pageSize, page * p.pageSize), total: list.length, page,
-    counts: { all: mockUsers.length, admin: count('admin'), it: count('it'), staff: count('staff') },
-  };
-}
-
-// page ไม่ระบุ = หน้าปัจจุบัน (โหลดใหม่) · opts.retry = กดโหลดใหม่ (ลอง backend อีกครั้งแม้อยู่โหมดตัวอย่าง)
-async function loadUsers(page, opts = {}) {
+// page ไม่ระบุ = หน้าปัจจุบัน (โหลดใหม่)
+async function loadUsers(page) {
   const seq = ++usersSeq;
   const params = usersParams(page || usersPage);
   const table = $('usersBody').closest('table');
   if (!usersLoaded) $('usersBody').innerHTML = `<tr><td colspan="9" class="px-2">${ftSkeleton('row', 5)}</td></tr>`;
   else setBusy(table, true);
   if ((await liffReady) === false) return;   // ดูคอมเมนต์ที่ liffReady
-  let res, mock = false;
+  let res;
   try {
-    if (usingMockUsers && !opts.retry) { res = mockUsersPage(params); mock = true; }
-    else res = await fetchPage('getUsers', params);
+    res = await fetchPage('getUsers', params);
     if (seq !== usersSeq) return;
-    if (!mock) {
-      usersViewerIsAdmin = true;   // getUsers เปิดเฉพาะแอดมิน (ACL ฝั่ง server) — ตอบสำเร็จ = คนดูเป็นแอดมิน
-      setMockReason('usersMockReason', null);
-      setAuthExpired(false);
-    }
+    usersViewerIsAdmin = true;   // getUsers เปิดเฉพาะแอดมิน (ACL ฝั่ง server) — ตอบสำเร็จ = คนดูเป็นแอดมิน
   } catch (e) {
     if (seq !== usersSeq) return;
-    if (isAuthError(e)) setAuthExpired(true);
-    if (usersLoaded && !usingMockUsers) {   // มีของจริงให้ดูอยู่แล้ว (แค่เปลี่ยนหน้า/กรองไม่สำเร็จ) — คงหน้าเดิมไว้
-      setBusy(table, false);
-      ftToast('โหลดรายชื่อผู้ใช้ไม่สำเร็จ: ' + e.message, 'error');
-      return;
-    }
-    res = mockUsersPage(params);
-    mock = true;
-    setMockReason('usersMockReason', e);
+    setBusy(table, false);
+    // IT เปิดเมนูนี้ = ไม่มีสิทธิ์ (getUsers เฉพาะแอดมิน) — บอกตรงๆ ว่าหน้านี้ของแอดมิน
+    showViewError('users', e, () => loadUsers(), { title: { forbidden: 'หน้านี้สำหรับแอดมินเท่านั้น' } });
+    return;
   }
-  usingMockUsers = mock;
-  users = mock ? res.users : (res.users || []).map(normalizeUser);
+  clearViewError('users');
+  users = (res.users || []).map(normalizeUser);
   usersTotal = Number(res.total) || 0;
   usersPage = Number(res.page) || 1;
   usersCounts = res.counts || usersCounts;
@@ -1316,19 +1357,18 @@ async function loadUsers(page, opts = {}) {
   setBusy(table, false);
   renderUsers();
   // หน้าถัดไปรอไว้ — กด "ถัดไป" แล้วขึ้นทันที
-  if (!mock && usersPage * USERS_PAGE < usersTotal) prefetchPage('getUsers', usersParams(usersPage + 1));
+  if (usersPage * USERS_PAGE < usersTotal) prefetchPage('getUsers', usersParams(usersPage + 1));
 }
 
 // สิทธิ์แก้บทบาท: แค่ซ่อน/แสดงปุ่ม — ด่านจริงคือ ACL ของ updateUserRole ฝั่ง backend (Admin เท่านั้น)
-// โหมดตัวอย่างเปิดให้ลองกดได้ เพราะไม่บันทึกจริงอยู่แล้ว
 let usersViewerIsAdmin = false;
 function canEditRoles() {
-  return usingMockUsers || usersViewerIsAdmin;
+  return usersViewerIsAdmin;
 }
 
 function roleBadge(role) {
   const r = ROLES[role] || ROLES.staff;
-  return `<span class="text-[11px] px-2 py-0.5 rounded-full whitespace-nowrap ${r.badge}">${r.label}</span>`;
+  return `<span class="text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${r.badge}">${r.label}</span>`;
 }
 
 function renderUsers() {
@@ -1337,7 +1377,6 @@ function renderUsers() {
   $('usrAdmin').innerText = usersCounts.admin;
   $('usrIt').innerText = usersCounts.it;
   $('usrStaff').innerText = usersCounts.staff;
-  $('usersMockBanner').classList.toggle('hidden', !usingMockUsers);
 
   // role filter chips — กรองที่ DB แล้วกลับไปหน้า 1
   const chips = [['all','ทั้งหมด'], ['admin',ROLES.admin.label], ['it',ROLES.it.label], ['staff',ROLES.staff.label]];
@@ -1376,10 +1415,10 @@ function renderUsers() {
         <div class="flex items-center gap-2.5">
           <span class="w-8 h-8 rounded-full bg-brand-600 text-white text-xs font-bold flex items-center justify-center shrink-0">${escapeHtml(u.name.trim().charAt(0) || '?')}</span>
           <div class="min-w-0">
-            <div class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(u.name)}${isMe ? ' <span class="text-[10px] font-normal text-brand-600">(คุณ)</span>' : ''}</div>
-            <div class="text-[10px] truncate hidden lg:block" style="color:var(--ink-muted)">${escapeHtml(u.userId)}</div>
-            <div class="text-[10px] truncate lg:hidden" style="color:var(--ink-muted)">${escapeHtml(u.position)}${u.office ? ' · ' + escapeHtml(u.office) : ''}</div>
-            <div class="text-[10px] truncate sm:hidden" style="color:var(--ink-muted)">แจ้งซ่อม ${u.reported} · รับผิดชอบ ${u.assigned}</div>
+            <div class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(u.name)}${isMe ? ' <span class="text-[11px] font-normal text-brand-600">(คุณ)</span>' : ''}</div>
+            <div class="text-[11px] truncate hidden lg:block" style="color:var(--ink-muted)">${escapeHtml(u.userId)}</div>
+            <div class="text-[11px] truncate lg:hidden" style="color:var(--ink-muted)">${escapeHtml(u.position)}${u.office ? ' · ' + escapeHtml(u.office) : ''}</div>
+            <div class="text-[11px] truncate sm:hidden" style="color:var(--ink-muted)">แจ้งซ่อม ${u.reported} · รับผิดชอบ ${u.assigned}</div>
             <div class="lg:hidden mt-1">${roleBadge(u.role)}</div>
           </div>
         </div>
@@ -1387,7 +1426,7 @@ function renderUsers() {
       <td class="py-2.5 pr-3 text-xs hidden lg:table-cell" style="color:var(--ink-2)">${escapeHtml(u.position)}</td>
       <td class="py-2.5 pr-3 text-xs hidden lg:table-cell" style="color:var(--ink-2)">
         <div class="truncate max-w-[16rem]">${escapeHtml(u.office || '-')}</div>
-        <div class="text-[10px] truncate max-w-[16rem]" style="color:var(--ink-muted)">${escapeHtml([ftShortOrg(u.branch), u.department].filter(Boolean).join(' · '))}</div>
+        <div class="text-[11px] truncate max-w-[16rem]" style="color:var(--ink-muted)">${escapeHtml([ftShortOrg(u.branch), u.department].filter(Boolean).join(' · '))}</div>
       </td>
       <td class="py-2.5 pr-3 hidden lg:table-cell">${roleBadge(u.role)}</td>
       <td class="py-2.5 pr-3 text-right tabular-nums text-xs hidden sm:table-cell" style="color:var(--ink-2)">${u.reported}</td>
@@ -1397,7 +1436,7 @@ function renderUsers() {
           ? `<select data-uid="${escapeHtml(u.userId)}" class="role-select w-full sm:w-auto border border-slate-300 rounded-lg px-2 py-1.5 sm:py-1 text-xs bg-white outline-none focus:ring-2 focus:ring-brand-500">
                ${Object.entries(ROLES).map(([k, r]) => `<option value="${k}" ${k === u.role ? 'selected' : ''}>${r.label}</option>`).join('')}
              </select>`
-          : `<span class="text-[10px]" style="color:var(--ink-muted)">—</span>`
+          : `<span class="text-[11px]" style="color:var(--ink-muted)">—</span>`
       }</td>`;
     body.appendChild(tr);
   });
@@ -1422,8 +1461,6 @@ async function changeRole(userId, newRole) {
   setRole(prevRole, newRole);
   renderUsers();
 
-  if (usingMockUsers) return;   // โหมดตัวอย่าง: ไม่ยิง backend
-
   try {
     const res = await callBackend('updateUserRole', { userId, role: newRole });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'อัปเดตไม่สำเร็จ');
@@ -1439,12 +1476,6 @@ async function changeRole(userId, newRole) {
 /* =============================================================================
    Knowledge Base — บทความถูกสร้างอัตโนมัติตอนปิดงานพร้อมกรอกวิธีแก้ไข (ดู moveTicket)
    ============================================================================= */
-
-const MOCK_KB = [
-  { id:1, ticketId:118, ticketCode:'TK-118', category:'เครือข่าย', detail:'เปลี่ยนสาย LAN ใหม่', resolution:'สาย LAN เส้นเดิมชำรุดจากการงอพับ เปลี่ยนเป็นสาย Cat6 เส้นใหม่และทดสอบความเร็วผ่าน speedtest ภายในแล้วปกติ', author:'สมคิด ไอที', createdAt:hrsAgo(24) },
-  { id:2, ticketId:119, ticketCode:'TK-119', category:'ซอฟต์แวร์', detail:'อีเมลส่งออกไม่ได้', resolution:'พบว่ากล่องขาออกเต็มโควตา (quota) ให้ลบไฟล์แนบเก่าที่ไม่ใช้แล้วและตั้งค่าเลี่ยงแนบไฟล์ใหญ่ผ่านอีเมลโดยตรง', author:'วิชัย ไอที', createdAt:hrsAgo(50) },
-  { id:3, ticketId:115, ticketCode:'TK-115', category:'ฮาร์ดแวร์', detail:'ตั้งค่าแชร์ปริ้นเตอร์', resolution:'ติดตั้งไดรเวอร์ปริ้นเตอร์รุ่นที่ตรงกับ Windows 11 ใหม่ แล้วแชร์ผ่านเครื่อง server กลางแทนเครื่องเดิมที่ปิดเครื่องบ่อย', author:'วิชัย ไอที', createdAt:hrsAgo(26) },
-];
 
 function normalizeKb(a) {
   return {
@@ -1467,52 +1498,27 @@ const kbParams = (page) => ({
   facets: !kbCats,   // ยอดต่อหมวดของชิพ ขอเฉพาะตอนยังไม่มี/ข้อมูลเปลี่ยน
 });
 
-let mockKb = null;   // MOCK_KB ที่ normalize แล้ว — โหมดตัวอย่างแก้/ลบในนี้
 let kbSeq = 0;
 
-// โหมดตัวอย่าง: ทำแบบเดียวกับ getKnowledgeBase ฝั่ง server กับข้อมูลในเครื่อง
-// หมวดหมู่ของข้อมูลจำลองไม่มี id จริง จึงใช้ลำดับในรายการชิพเป็น id
-function mockKbPage(p) {
-  if (!mockKb) mockKb = MOCK_KB.map(normalizeKb);
-  const names = [...new Set(mockKb.map(a => a.category))];
-  const cats = names.map((name, i) => ({ id: i + 1, name, n: mockKb.filter(a => a.category === name).length }));
-  const cat = p.categoryId ? (cats.find(c => c.id === p.categoryId) || {}).name : '';
-  const q = p.q.toLowerCase();
-  const list = mockKb
-    .filter(a => !cat || a.category === cat)
-    .filter(a => !q || [a.detail, a.resolution, a.ticketCode].some(s => String(s).toLowerCase().includes(q)))
-    .sort((a, b) => (parseT(b.createdAt) || 0) - (parseT(a.createdAt) || 0));
-  const page = Math.min(p.page, Math.max(1, Math.ceil(list.length / p.pageSize)));
-  return { articles: list.slice((page - 1) * p.pageSize, page * p.pageSize), total: list.length, page, categories: cats };
-}
-
-// page ไม่ระบุ = หน้าปัจจุบัน (โหลดใหม่) · opts.retry = กดโหลดใหม่ (ลอง backend อีกครั้งแม้อยู่โหมดตัวอย่าง)
-async function loadKB(page, opts = {}) {
+// page ไม่ระบุ = หน้าปัจจุบัน (โหลดใหม่)
+async function loadKB(page) {
   const seq = ++kbSeq;
   const params = kbParams(page || kbPage);
   if (!kbLoaded) $('kbList').innerHTML = ftSkeleton('card', 3);
   else setBusy($('kbList'), true);
   if ((await liffReady) === false) return;   // ดูคอมเมนต์ที่ liffReady
-  let res, mock = false;
+  let res;
   try {
-    if (usingMockKb && !opts.retry) { res = mockKbPage(params); mock = true; }
-    else res = await fetchPage('getKnowledgeBase', params);
+    res = await fetchPage('getKnowledgeBase', params);
     if (seq !== kbSeq) return;
-    if (!mock) { setMockReason('kbMockReason', null); setAuthExpired(false); }
   } catch (e) {
     if (seq !== kbSeq) return;
-    if (isAuthError(e)) setAuthExpired(true);
-    if (kbLoaded && !usingMockKb) {   // มีของจริงให้ดูอยู่แล้ว (แค่เปลี่ยนหน้า/กรองไม่สำเร็จ) — คงหน้าเดิมไว้
-      setBusy($('kbList'), false);
-      ftToast('โหลดประวัติการแจ้งซ่อมไม่สำเร็จ: ' + e.message, 'error');
-      return;
-    }
-    res = mockKbPage(params);
-    mock = true;
-    setMockReason('kbMockReason', e);
+    setBusy($('kbList'), false);
+    showViewError('kb', e, () => loadKB());
+    return;
   }
-  usingMockKb = mock;
-  kbArticles = mock ? res.articles : (res.articles || []).map(normalizeKb);
+  clearViewError('kb');
+  kbArticles = (res.articles || []).map(normalizeKb);
   kbTotal = Number(res.total) || 0;
   kbPage = Number(res.page) || 1;
   if (res.categories) {
@@ -1521,11 +1527,10 @@ async function loadKB(page, opts = {}) {
   kbLoaded = true;
   setBusy($('kbList'), false);
   renderKB();
-  if (!mock && kbPage * KB_PAGE < kbTotal) prefetchPage('getKnowledgeBase', kbParams(kbPage + 1));
+  if (kbPage * KB_PAGE < kbTotal) prefetchPage('getKnowledgeBase', kbParams(kbPage + 1));
 }
 
 function renderKB() {
-  $('kbMockBanner').classList.toggle('hidden', !usingMockKb);
 
   // ชิพหมวดหมู่ + ยอดของประวัติทั้งหมด (จาก server) — หมวดที่ไม่มี id = ไม่มีหมวด ('none')
   const cats = kbCats || [];
@@ -1556,13 +1561,13 @@ function renderKB() {
 
   list.forEach(a => {
     const el = document.createElement('div');
-    el.className = 'border rounded-lg p-3.5';
+    el.className = 'border rounded-xl p-4 transition-colors hover:bg-slate-50/60';
     el.style.borderColor = 'var(--grid)';
     el.innerHTML = `
       <div class="flex items-start justify-between gap-2 mb-1.5">
         <div class="flex items-center gap-2 flex-wrap">
           <span class="font-bold text-sm" style="color:var(--ink)">${escapeHtml(a.ticketCode)}</span>
-          <span class="text-[11px] px-2 py-0.5 rounded-full ${catColor(a.category)}">${escapeHtml(a.category)}</span>
+          <span class="text-xs px-2 py-0.5 rounded-full ${catColor(a.category)}">${escapeHtml(a.category)}</span>
         </div>
         <div class="flex items-center gap-2 shrink-0">
           ${a.pdfUrl ? `<button data-pdf="${a.id}" class="text-xs text-brand-600 hover:underline whitespace-nowrap inline-flex items-center gap-1">${icon('file-text', 'w-3.5 h-3.5')}เอกสารต้นฉบับ</button>` : ''}
@@ -1572,7 +1577,7 @@ function renderKB() {
       </div>
       ${a.detail ? `<div class="text-xs mb-1.5" style="color:var(--ink-muted)">อาการ: ${escapeHtml(a.detail)}</div>` : ''}
       <p class="text-sm leading-relaxed whitespace-pre-wrap" style="color:var(--ink-2)">${escapeHtml(a.resolution)}</p>
-      <div class="text-[11px] mt-2" style="color:var(--ink-muted)">บันทึกโดย ${escapeHtml(a.author)} · ${timeAgo(a.createdAt)}</div>
+      <div class="text-xs mt-2" style="color:var(--ink-muted)">บันทึกโดย ${escapeHtml(a.author)} · ${timeAgo(a.createdAt)}</div>
     `;
     const pdfBtn = el.querySelector('[data-pdf]');
     if (pdfBtn) pdfBtn.addEventListener('click', () => openPdf({ code:a.ticketCode, pdfUrl:a.pdfUrl }));
@@ -1609,8 +1614,6 @@ async function saveKbEdit() {
   cancelKbEdit();
   renderKB();
 
-  if (usingMockKb) return;
-
   try {
     const res = await callBackend('updateKnowledgeArticle', { kbId, resolutionText: text });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'อัปเดตไม่สำเร็จ');
@@ -1632,13 +1635,9 @@ async function deleteKbArticle(article) {
   renderKB();
 
   try {
-    if (usingMockKb) {
-      mockKb = mockKb.filter(x => x.id !== article.id);
-    } else {
-      const res = await callBackend('deleteKnowledgeArticle', { kbId: article.id });
-      if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ลบไม่สำเร็จ');
-      clearPageCache();
-    }
+    const res = await callBackend('deleteKnowledgeArticle', { kbId: article.id });
+    if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ลบไม่สำเร็จ');
+    clearPageCache();
     // โหลดหน้านี้ใหม่: เติมช่องที่ว่างด้วยรายการจากหน้าถัดไป + ยอดชิพ/จำนวนหน้าใหม่
     // (ลบใบสุดท้ายของหน้าสุดท้าย server จะส่งหน้าก่อนหน้ามาแทนเอง)
     kbCats = null;
@@ -1652,7 +1651,7 @@ async function deleteKbArticle(article) {
 
 /* =============================================================================
    ข้อมูลหลัก (Master Data) — พื้นที่ (EXCISE_OFFICE) · สาขา (BRANCH) · ส่วน (DEPARTMENT) · หมวดหมู่ (ISSUE_CATEGORY)
-   ไม่มีข้อมูลจำลอง: ถ้าโหลดไม่ได้ให้เห็นว่าว่าง ดีกว่าแก้ของปลอมแล้วคิดว่าบันทึกแล้ว
+   โหลดไม่ได้ = หน้าสถานะ (showViewError) — ไม่มีรายการให้แก้จนกว่าจะโหลดสำเร็จ
    ไม่ทำ optimistic update — แก้นานๆ ครั้ง และ backend อาจปฏิเสธ (ชื่อซ้ำ/ยังถูกใช้อยู่)
    คำสั่งเขียนต้องแนบ apiVersion — backend ปฏิเสธหน้าเว็บรุ่นเก่าที่ใช้ "branch" ในความหมายพื้นที่
    ============================================================================= */
@@ -1669,22 +1668,18 @@ let masterTab = 'office';
 let masterEditing = null;   // { type, id } — id = null คือเพิ่มใหม่
 
 async function loadMaster() {
-  await liffReady;
+  if ((await liffReady) === false) return;
   if (!masterLoaded) $('masterList').innerHTML = ftSkeleton('row', 5);
   try {
     const res = await callBackend('getMasterData', { withUsage: true });
     if (!res || res.status !== 'success') throw new Error((res && res.message) || 'ไม่มีข้อมูลจาก backend');
     masterData = { offices: res.offices || [], branches: res.branches || [], departments: res.departments || [], categories: res.categories || [] };
-    $('masterErrorBanner').classList.add('hidden');
-    setAuthExpired(false);
+    masterLoaded = true;
+    clearViewError('master');
+    renderMaster();
   } catch (e) {
-    masterData = emptyMaster();
-    $('masterErrorReason').innerText = 'สาเหตุ: ' + e.message;
-    $('masterErrorBanner').classList.remove('hidden');
-    if (isAuthError(e)) setAuthExpired(true);
+    showViewError('master', e, loadMaster);
   }
-  masterLoaded = true;
-  renderMaster();
 }
 
 // "ตั๋วแจ้งซ่อม 1 · สาขา 3" — ยอดรวมเดียวอ่านแล้วนึกว่าเป็นจำนวนตั๋ว
@@ -1702,6 +1697,12 @@ function renderMaster() {
     b.innerText = MASTER_TYPES[b.dataset.tab].label + ' (' + masterData[MASTER_TYPES[b.dataset.tab].key].length + ')';
   });
   $('masterAddLabel').innerText = MASTER_TYPES[masterTab].label;
+  // ไม่ใช่แอดมิน: ซ่อนปุ่มเพิ่ม/แก้/ลบ (เดิมกรอกฟอร์มจนเสร็จ กดบันทึกแล้วค่อยรู้ว่าไม่มีสิทธิ์)
+  const canEdit = isAdminUser();
+  $('masterAddBtn').classList.toggle('hidden', !canEdit);
+  $('masterSub').innerText = canEdit
+    ? 'ตัวเลือกในฟอร์มแจ้งซ่อม · ลบได้เฉพาะรายการที่ยังไม่มีตั๋วหรือผู้ใช้อ้างถึง'
+    : 'ตัวเลือกในฟอร์มแจ้งซ่อม · ดูได้อย่างเดียว — เพิ่ม/แก้ไข/ลบ ได้เฉพาะแอดมิน';
 
   let rows = masterData[MASTER_TYPES[masterTab].key];
   // เรียงตามผังหน่วยงานเหมือน dropdown ในฟอร์มแจ้งซ่อม (ftSortOffices / ftSortBranches ใน common.js)
@@ -1722,17 +1723,20 @@ function renderMaster() {
     const el = document.createElement('div');
     el.className = 'flex items-center gap-3 py-2.5';
     el.innerHTML = `
-      <span class="text-[11px] w-8 shrink-0 text-right tabular-nums" style="color:var(--ink-muted)">#${r.id}</span>
+      <span class="text-xs w-8 shrink-0 text-right tabular-nums" style="color:var(--ink-muted)">#${r.id}</span>
       <div class="min-w-0 flex-1">
         <div class="text-sm truncate" style="color:var(--ink)">${escapeHtml(r.name || '(ไม่มีชื่อ)')}</div>
-        ${sub ? `<div class="text-[11px] truncate" style="color:var(--ink-muted)">${escapeHtml(sub)}</div>` : ''}
+        ${sub ? `<div class="text-xs truncate" style="color:var(--ink-muted)">${escapeHtml(sub)}</div>` : ''}
       </div>
-      <span class="text-[11px] shrink-0 text-right max-w-[40%]" style="color:var(--ink-muted)">${escapeHtml(usageText(r))}</span>
-      <button data-act="edit" class="text-xs text-slate-500 hover:text-brand-600 min-h-[36px] px-1.5 shrink-0" title="แก้ไข" aria-label="แก้ไข">${icon('pencil')}</button>
+      <span class="text-xs shrink-0 text-right max-w-[40%]" style="color:var(--ink-muted)">${escapeHtml(usageText(r))}</span>
+      ${canEdit ? `
+      <button data-act="edit" class="text-xs text-slate-500 hover:text-brand-600 min-h-[36px] px-1.5 shrink-0" title="แก้ไข" aria-label="แก้ไข ${escapeHtml(r.name || '')}">${icon('pencil')}</button>
       <button data-act="del" class="text-xs min-h-[36px] px-1.5 shrink-0 ${r.used ? 'opacity-30 cursor-not-allowed' : 'text-slate-500 hover:text-red-600'}"
-              title="${r.used ? 'ลบไม่ได้ — ยังถูกใช้อยู่' : 'ลบ'}" aria-label="ลบ">${icon('trash-2')}</button>`;
-    el.querySelector('[data-act="edit"]').addEventListener('click', () => openMasterModal(masterTab, r));
-    el.querySelector('[data-act="del"]').addEventListener('click', () => deleteMaster(masterTab, r));
+              title="${r.used ? 'ลบไม่ได้ — ยังถูกใช้อยู่' : 'ลบ'}" aria-label="ลบ ${escapeHtml(r.name || '')}">${icon('trash-2')}</button>` : ''}`;
+    if (canEdit) {
+      el.querySelector('[data-act="edit"]').addEventListener('click', () => openMasterModal(masterTab, r));
+      el.querySelector('[data-act="del"]').addEventListener('click', () => deleteMaster(masterTab, r));
+    }
     box.appendChild(el);
   });
 }
@@ -1861,11 +1865,18 @@ async function deleteMaster(type, row) {
 }
 
 /* =============================================================================
-   Settings — บัญชีของฉัน + ค่าตั้งต้นของแดชบอร์ด (เก็บใน localStorage ล้วนๆ)
+   Settings — เกี่ยวกับฉัน (ข้อมูลเจ้าหน้าที่) + ค่าตั้งต้นของแดชบอร์ด (เก็บใน localStorage ล้วนๆ)
    ============================================================================= */
 
+// สิ่งที่แต่ละบทบาททำได้ — ตรงกับตาราง ACL ใน gas/ApiRouter.gs (ด่านจริงอยู่ที่ backend)
+const ROLE_CAN = {
+  admin: 'ทุกอย่างของเจ้าหน้าที่ IT + จัดการผู้ใช้ ข้อมูลหลัก และยกเลิกงาน',
+  it:    'รับงาน ปิดงาน บันทึกวิธีแก้ไข และดูแดชบอร์ด',
+  staff: 'แจ้งซ่อมและดูประวัติการแจ้งซ่อมของตัวเอง',
+};
+
 function renderSettings() {
-  // บัญชีของฉัน: ใช้ role จาก users ถ้าโหลดแล้ว ไม่งั้นโชว์แค่ชื่อ/userId ที่มีจาก LIFF
+  // เกี่ยวกับฉัน: ข้อมูลจาก getMyProfile (staffProfile) · role ใช้จาก users ถ้าโหลดแล้ว (สดกว่าหลังเปลี่ยนบทบาท)
   const me = users.find(u => u.userId === currentStaffId);
   const box = $('settingsAccountBox');
   if (!currentStaffId) {
@@ -1879,26 +1890,52 @@ function renderSettings() {
   }
   const displayName = (staffProfile && staffProfile.name) || currentStaff || '-';
   const avatarHtml = staffPicUrl
-    ? `<img src="${escapeHtml(staffPicUrl)}" alt="" class="w-12 h-12 rounded-full object-cover shrink-0">`
-    : `<span class="w-12 h-12 rounded-full bg-brand-600 text-white text-sm font-bold flex items-center justify-center shrink-0">${escapeHtml(displayName.trim().charAt(0) || '?')}</span>`;
+    ? `<img src="${escapeHtml(staffPicUrl)}" alt="" class="w-16 h-16 rounded-full object-cover shrink-0">`
+    : `<span class="w-16 h-16 rounded-full bg-brand-600 text-white text-xl font-bold flex items-center justify-center shrink-0">${escapeHtml(displayName.trim().charAt(0) || '?')}</span>`;
   const sp = staffProfile || {};
   const role = me ? me.role : (sp.role ? roleOf(sp.role) : null);
-  // ชื่อสาขาเต็มมีชื่อพื้นที่อยู่แล้ว ไม่ต้องต่อชื่อพื้นที่ซ้ำ (ใช้ชื่อพื้นที่เฉพาะตอนไม่รู้สาขา)
-  const infoParts = [sp.position, sp.department, sp.branch || sp.office].filter(Boolean);
+  // แถวที่เป็นตัวสำนักงานเอง (ชื่อสาขา = ชื่อหน่วยงาน เช่น ภาค 9 / สำนักงานพื้นที่) ไม่ใช่สาขา — บอกให้ชัด ไม่โชว์ชื่อซ้ำ
+  // คำเดียวกับเมนูข้อมูลหลัก ("ตัวสำนักงาน (ไม่ใช่สาขา)")
+  const branchText = !sp.branch ? '' : sp.branch === sp.office ? 'ตัวสำนักงาน (ไม่ใช่สาขา)' : ftShortOrg(sp.branch);
+  const rows = [
+    ['ตำแหน่ง', sp.position],
+    ['บทบาทในระบบ', role ? `${ROLES[role].label} — ${ROLE_CAN[role]}` : ''],
+    ['หน่วยงาน', sp.office],
+    ['สาขา', branchText],
+    ['ส่วน', sp.department],
+    ['จังหวัด', sp.province],
+  ];
+  const loading = !staffProfile;   // getMyProfile ยังไม่ตอบ (หรือดึงไม่ได้) — มีแค่ชื่อจาก LINE
   box.innerHTML = `
-    <div class="flex items-center gap-3">
+    <div class="flex items-center gap-4">
       ${avatarHtml}
       <div class="min-w-0 flex-1">
         <div class="flex items-center gap-2 flex-wrap">
-          <span class="font-semibold truncate" style="color:var(--ink)">${escapeHtml(displayName)}</span>
+          <span class="text-lg font-bold truncate" style="color:var(--ink)">${escapeHtml(displayName)}</span>
           ${role ? roleBadge(role) : ''}
         </div>
-        ${infoParts.length ? `<div class="text-xs truncate mt-0.5" style="color:var(--ink-2)">${escapeHtml(infoParts.join(' · '))}</div>` : ''}
-        <div class="text-[10px] truncate mt-0.5" style="color:var(--ink-muted)">LINE: ${escapeHtml(currentStaffId)}</div>
+        <div class="text-sm truncate mt-0.5" style="color:var(--ink-2)">${escapeHtml(sp.position || (loading ? 'กำลังโหลดข้อมูลจากระบบ…' : '-'))}</div>
       </div>
     </div>
+    <dl class="mt-4 border-t" style="border-color:var(--grid)">
+      ${rows.map(([k, v]) => `
+        <div class="flex flex-col sm:flex-row sm:gap-4 py-2.5 border-b" style="border-color:var(--grid)">
+          <dt class="text-xs sm:text-sm sm:w-32 shrink-0" style="color:var(--ink-muted)">${k}</dt>
+          <dd class="text-sm min-w-0 break-words" style="color:var(--ink)">${v ? escapeHtml(v) : `<span style="color:var(--ink-muted)">${loading ? '…' : '-'}</span>`}</dd>
+        </div>`).join('')}
+      <div class="flex flex-col sm:flex-row sm:gap-4 py-2.5 border-b" style="border-color:var(--grid)">
+        <dt class="text-xs sm:text-sm sm:w-32 shrink-0" style="color:var(--ink-muted)">LINE User ID</dt>
+        <dd class="text-xs min-w-0 flex items-center gap-2" style="color:var(--ink-2)">
+          <span class="font-mono break-all">${escapeHtml(currentStaffId)}</span>
+          <button id="settingsCopyIdBtn" class="shrink-0 text-slate-400 hover:text-brand-600 p-1 -m-1 rounded" title="คัดลอก" aria-label="คัดลอก LINE User ID">${icon('copy', 'w-4 h-4')}</button>
+        </dd>
+      </div>
+    </dl>
+    <!-- USER ถูกเขียนทับด้วยค่าล่าสุดที่กรอกตอนแจ้งซ่อม (upsertReporter_) · บทบาทเปลี่ยนได้ที่เมนูผู้ใช้งานโดยแอดมินเท่านั้น -->
+    <div class="text-xs mt-2" style="color:var(--ink-muted)">ชื่อ ตำแหน่ง สาขา และส่วน มาจากข้อมูลที่กรอกในฟอร์มแจ้งซ่อมครั้งล่าสุด · บทบาทเปลี่ยนได้โดยแอดมินเท่านั้น</div>
     <button id="settingsLogoutBtn" class="mt-3 px-3 py-1.5 rounded-lg text-sm font-medium border border-slate-300 text-slate-600 hover:bg-slate-50">ออกจากระบบ</button>
   `;
+  $('settingsCopyIdBtn').addEventListener('click', () => ftCopy(currentStaffId, ' LINE User ID '));
   $('settingsLogoutBtn').addEventListener('click', doLogout);
 }
 
@@ -1935,8 +1972,20 @@ function initSettingsForm() {
    View switching + Init
    ============================================================================= */
 
+// รู้บทบาทแล้ว (โปรไฟล์จาก DB) และไม่ใช่แอดมิน -> ซ่อนสิ่งที่ ACL ใน ApiRouter.gs ไม่ยอมให้ทำ
+// ยังไม่รู้บทบาท = แสดงตามปกติ (server ตรวจซ้ำอยู่แล้ว) กันแอดมินเห็นเมนูหายระหว่างโหลดโปรไฟล์
+const roleKnownNotAdmin = () => !!staffProfile && !isAdminUser();
+function applyRoleUI() {
+  const hide = roleKnownNotAdmin();
+  document.querySelectorAll('.nav-item[data-view="users"]').forEach(a => a.classList.toggle('hidden', hide));
+  $('tabBar').classList.toggle('grid-cols-6', !hide);
+  $('tabBar').classList.toggle('grid-cols-5', hide);
+  if (hide && currentView === 'users') switchView('board');
+}
+
 function switchView(v) {
   if (!VIEWS[v]) v = 'board';   // กันค่าเพี้ยนใน localStorage (เช่นจากเวอร์ชันอนาคต) ทำหน้า crash
+  if (v === 'users' && roleKnownNotAdmin()) v = 'board';   // จำหน้าผู้ใช้งานไว้ตอนยังเป็นแอดมิน
   currentView = v;
   $('viewBoard').classList.toggle('hidden', v !== 'board');
   $('boardTools').classList.toggle('hidden', v !== 'board');   // แถบกรองอยู่นอก #viewBoard ต้องซ่อนเอง
@@ -1945,12 +1994,12 @@ function switchView(v) {
   $('viewUsers').classList.toggle('hidden', v !== 'users');
   $('viewMaster').classList.toggle('hidden', v !== 'master');
   $('viewSettings').classList.toggle('hidden', v !== 'settings');
-  $('viewTitle').innerText = VIEWS[v].title;
+  $('viewTitle').innerHTML = `<span class="md:hidden">${VIEWS[v].short}</span><span class="hidden md:inline">${VIEWS[v].title}</span>`;
+  if (v !== 'board') closeTicket();
   $('viewSubtitle').innerText = VIEWS[v].sub;
   document.querySelectorAll('.nav-item').forEach(a => a.classList.toggle('active', a.dataset.view === v));
   localStorage.setItem('ft_view', v);
   syncStaleBar();
-  syncMockBanner();
   // ทุกหน้าโหลดครั้งแรกตอนเข้าหน้า (เปิดแอปแล้วไม่ต้องรอโหลดของหน้าที่ยังไม่ได้ดู)
   if (v === 'board')     { if (!boardLoaded) loadBoard(); }
   if (v === 'dashboard') { renderDashboard(); if (!dashLoaded) loadDashboard(); }   // วาดใหม่ตอนแสดงเสมอ ให้ขนาด svg ถูก
@@ -1965,17 +2014,26 @@ document.querySelectorAll('.nav-item').forEach(a =>
   a.addEventListener('click', () => switchView(a.dataset.view)));
 $('staffBtn').addEventListener('click', () => { if (!currentStaffId) ensureLogin(); });
 // โหลดใหม่ตาม view ที่เปิดอยู่ (แต่ละหน้าโหลดข้อมูลคนละชุด) — ทิ้งหน้าที่จำไว้ทั้งหมด เอาของสดจาก DB
-// retry: ลอง backend อีกครั้งแม้ตอนนี้อยู่โหมดตัวอย่าง
-$('refreshBtn').addEventListener('click', () => {
+function reloadView(v) {
   clearPageCache();
-  if (currentView === 'users')     return loadUsers(null, { retry: true });
-  if (currentView === 'kb')        { kbCats = null; return loadKB(null, { retry: true }); }
-  if (currentView === 'master')    return loadMaster();
-  if (currentView === 'dashboard') return loadDashboard();
-  if (currentView === 'settings')  return loadMyProfile();
-  loadBoard({ retry: true });
-});
+  if (v === 'users')     return loadUsers();
+  if (v === 'kb')        { kbCats = null; return loadKB(); }
+  if (v === 'master')    return loadMaster();
+  if (v === 'dashboard') return loadDashboard();
+  if (v === 'settings')  return loadMyProfile();
+  loadBoard();
+}
+$('refreshBtn').addEventListener('click', () => reloadView(currentView));
+// เน็ตกลับมา: หน้าที่ค้างอยู่ที่หน้าสถานะ "โหลดไม่สำเร็จ" ลองใหม่เอง (ตามที่หน้าสถานะบอกผู้ใช้ไว้)
+window.addEventListener('online', () => { if (viewErr[currentView]) reloadView(currentView); });
 $('pdfClose').addEventListener('click', closePdf);
+$('tdClose').addEventListener('click', closeTicket);
+$('ticketDrawer').addEventListener('click', (e) => { if (e.target === $('ticketDrawer')) closeTicket(); });
+// Esc ปิดแผง — ยกเว้นมี modal ซ้อนอยู่ข้างบน (ปิดงาน/PDF) ให้ตัวบนปิดก่อน
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && drawerId != null &&
+      $('closeModal').classList.contains('hidden') && $('pdfModal').classList.contains('hidden')) closeTicket();
+});
 $('pdfModal').addEventListener('click', (e) => { if (e.target === $('pdfModal')) closePdf(); });
 // ค้นที่ DB — รอพิมพ์จบก่อนค่อยยิง (ไม่ยิงทุกตัวอักษร) แล้วกลับไปหน้า 1
 function debounced(fn, ms) {
@@ -2024,7 +2082,9 @@ window.addEventListener('resize', () => {
 // ถ้า currentView เป็น view ที่ผลลัพธ์ขึ้นกับตัวตน (settings แสดงบัญชี, users มีปุ่มแก้บทบาท)
 // ต้องวาดใหม่หลัง LIFF login resolve เสร็จ ไม่งั้นค้างสถานะ "ยังไม่ login" ทั้งที่ล็อกอินแล้ว
 function refreshIdentityDependentViews() {
+  applyRoleUI();
   if (currentView === 'board') render();   // ปุ่มยกเลิกงานบนการ์ดขึ้นกับบทบาท
+  if (currentView === 'master' && masterLoaded) renderMaster();   // ปุ่มเพิ่ม/แก้/ลบ เฉพาะแอดมิน
   if (currentView === 'settings') renderSettings();
   if (currentView === 'users' && usersLoaded) renderUsers();
 }
@@ -2051,7 +2111,10 @@ async function setupLiff() {
       let p = null;
       try { p = await liff.getProfile(); } catch (e) { console.warn('getProfile:', e.message); }
       const tok = liff.getDecodedIDToken() || {};
+      const prevId = currentStaffId;
       currentStaffId = (p && p.userId) || tok.sub || '';   // ค่านี้แหละที่ลง IT_In_Charge ได้จริง
+      // เปลี่ยนบัญชี LINE บนเครื่องเดิม -> ทิ้งโปรไฟล์ DB ของคนก่อน (ไม่งั้นมุมขวาบนโชว์ชื่อ/ตำแหน่งคนอื่น)
+      if (prevId && prevId !== currentStaffId) { staffProfile = null; localStorage.removeItem(PROFILE_KEY); }
       currentStaff = (p && p.displayName) || tok.name || currentStaff || 'ผู้ใช้ LINE';
       staffPicUrl = (p && p.pictureUrl) || tok.picture || '';
       localStorage.setItem('ft_staff', currentStaff);
@@ -2076,6 +2139,7 @@ async function setupLiff() {
 
 function init() {
   setStaffUI();
+  applyRoleUI();
   initSettingsForm();
   initBoardTools();
   $('authReloginBtn')?.addEventListener('click', ensureLogin);

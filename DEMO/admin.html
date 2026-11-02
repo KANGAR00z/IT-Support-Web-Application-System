@@ -13,11 +13,16 @@
        ต้องใช้ connection แบบ anonymous ไม่งั้น preconnect เปล่าประโยชน์ -->
   <link rel="preconnect" href="https://script.google.com" crossorigin>
   <link rel="preconnect" href="https://script.googleusercontent.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <!-- IBM Plex Sans Thai: ตัวอักษรเรียบ ทันสมัย ตัวเลขชัด (คอนโซลเจ้าหน้าที่) · Sarabun เป็นตัวสำรองระหว่างโหลด -->
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@300;400;500;600;700&family=Sarabun:wght@400;600&display=swap" rel="stylesheet">
   <script src="config.js"></script>
 
   <style>
-    body { font-family: 'Sarabun', sans-serif; background-color: #f1f5f9; }
+    /* ===== Surface tokens (ธีมขาว minimal) =====================================
+       พื้นหน้า --page เทาอ่อนมาก · การ์ดขาวล้วน + เส้นขอบบาง + เงานุ่ม = ลำดับชั้นจาก "แสง" ไม่ใช่สีพื้น
+       ไม่ใช้สีพื้นหลังแต้มตามสถานะ (เดิมคอลัมน์บอร์ดเป็นเหลือง/ฟ้า/เขียวอ่อน) — สีสถานะเหลือแค่จุดกับแถบ */
+    body { font-family: 'IBM Plex Sans Thai', 'Sarabun', system-ui, sans-serif; background-color: var(--page);
+           -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
 
     /* ===== Data-viz tokens =====================================================
        สีชุดนี้ผ่าน validator แล้วบน surface ขาว (#ffffff = พื้นการ์ด):
@@ -33,15 +38,27 @@
          seq-0 = "ไม่มีตั๋ว" ใช้สีเทาพื้น แยกจาก ramp ชัดเจน (vs #86b6ef = 1.93:1)
        ========================================================================== */
     .viz-root {
+      --page:       #f6f7f9;   /* พื้นหน้า — เทาอมฟ้าจางมาก การ์ดขาวลอยขึ้นมาเอง */
       --surface:    #ffffff;
+      --col:        #eff1f4;   /* พื้นคอลัมน์บอร์ด (ช่องที่การ์ดวางอยู่) */
+      --line:       #e9ecf1;   /* เส้นขอบการ์ด / เส้นแบ่ง */
+      --line-strong:#dde1e7;   /* ขอบช่องกรอก */
       --ink:        #0f172a;
       --ink-2:      #475569;
-      --ink-muted:  #94a3b8;
-      --grid:       #e2e8f0;
+      /* muted ใช้กับตัวหนังสือเล็ก → ต้อง ≥4.5:1 บนขาว (#94a3b8 เดิมได้แค่ 2.6:1) — #64748b = 4.76:1 */
+      --ink-muted:  #64748b;
+      --ink-faint:  #94a3b8;   /* เฉพาะของตกแต่ง/placeholder ไม่ใช่ข้อความที่ต้องอ่าน */
+      --grid:       #e9ecf1;
+      --shadow-card: 0 1px 2px rgba(15, 23, 42, .04), 0 6px 20px -8px rgba(15, 23, 42, .08);
+      --shadow-hover: 0 2px 4px rgba(15, 23, 42, .05), 0 12px 28px -10px rgba(15, 23, 42, .14);
 
       --st-open: #d97706;   /* รอรับเรื่อง  */
       --st-prog: #2563eb;   /* กำลังดำเนินการ (= brand primary) */
       --st-done: #059669;   /* เสร็จสิ้น */
+      /* ราง (track) ของแถบสัดส่วนบนการ์ด KPI = เฉดอ่อนของ ramp เดียวกัน (meter spec) */
+      --st-open-soft: #fef3c7;
+      --st-prog-soft: #dbeafe;
+      --st-done-soft: #d1fae5;
 
       --seq-0: #f1f5f9;     /* 0 ตั๋ว — เทาพื้น ไม่ใช่ส่วนหนึ่งของ ramp */
       --seq-1: #86b6ef;     /* step 250 — พื้นล่างของ ordinal (2.11:1) */
@@ -49,24 +66,62 @@
       --seq-3: #2a78d6;     /* step 450 */
       --seq-4: #184f95;     /* step 600 */
     }
-    .viz-card { background: var(--surface); border: 1px solid var(--grid); border-radius: .75rem; padding: 1rem; }
-    .viz-title { font-weight: 700; font-size: .875rem; color: var(--ink); }
-    .viz-sub { font-size: .6875rem; color: var(--ink-muted); margin-top: .125rem; }
-    .viz-kpi-label { display: flex; align-items: center; gap: .5rem; font-size: .75rem; font-weight: 500; color: var(--ink-2); }
-    .viz-dot { width: .625rem; height: .625rem; border-radius: 9999px; flex: none; }
-    /* ตัวเลขใส่ ink เสมอ ไม่ใส่สีซีรีส์ — จุดสีข้างๆ เป็นตัวบอก identity */
+    .viz-card { background: var(--surface); border: 1px solid var(--line); border-radius: 1rem; padding: 1rem;
+                box-shadow: var(--shadow-card); }
+    @media (min-width: 768px) { .viz-card { padding: 1.25rem 1.375rem; } }
+    .viz-title { font-weight: 600; font-size: .9375rem; color: var(--ink); letter-spacing: -.005em; }
+    .viz-sub { font-size: .75rem; color: var(--ink-muted); margin-top: .125rem; }
+    .viz-kpi-label { display: flex; align-items: center; gap: .5rem; font-size: .8125rem; font-weight: 500; color: var(--ink-2); }
+    .viz-dot { width: .5rem; height: .5rem; border-radius: 9999px; flex: none; }
+    /* ตัวเลขใส่ ink เสมอ ไม่ใส่สีซีรีส์ — จุดสีข้างๆ เป็นตัวบอก identity
+       ตัวเลขใหญ่ใช้ proportional figures (ไม่ใช่ tabular) และน้ำหนัก 600 ไม่หนาจนทึบ */
     /* clamp: บนมือถือ KPI เรียง 2 คอลัมน์ ตัวเลข 3 หลักที่ 3rem จะเบียดจนล้นการ์ด */
-    .viz-kpi-value { font-size: clamp(1.5rem, 6vw, 1.875rem); font-weight: 700; color: var(--ink); line-height: 1.15; margin-top: .375rem; }
-    .viz-hero { font-size: clamp(2.25rem, 9vw, 3rem); font-weight: 700; color: var(--ink); line-height: 1.05; margin-top: .25rem; }
-    .viz-kpi-sub { font-size: .6875rem; color: var(--ink-muted); margin-top: .125rem; }
+    .viz-kpi-value { font-size: clamp(1.625rem, 6vw, 2rem); font-weight: 600; color: var(--ink); line-height: 1.15;
+                     margin-top: .625rem; letter-spacing: -.02em; }
+    .viz-hero { font-size: clamp(2.375rem, 9vw, 3.25rem); font-weight: 600; color: var(--ink); line-height: 1;
+                margin-top: .5rem; letter-spacing: -.03em; }
+    .viz-kpi-sub { font-size: .75rem; color: var(--ink-muted); margin-top: .375rem; }
     .viz-tip { position: absolute; pointer-events: none; z-index: 20; background: var(--ink); color: #fff;
-               font-size: .6875rem; padding: .375rem .5rem; border-radius: .375rem; white-space: nowrap;
-               transform: translate(-50%, -130%); box-shadow: 0 4px 12px rgba(0,0,0,.18); }
-    .nav-item { color: var(--ink-2); font-weight: 500; }
-    .nav-item:hover { background: #f1f5f9; }
+               font-size: .75rem; padding: .375rem .625rem; border-radius: .5rem; white-space: nowrap;
+               transform: translate(-50%, -130%); box-shadow: 0 8px 24px -6px rgba(15,23,42,.35); }
+
+    /* แถบสัดส่วนบนการ์ด KPI (meter): ความยาว = % ของตั๋วทั้งหมด · รางเป็นเฉดอ่อนของสีเดียวกัน */
+    .kpi-meter { height: .375rem; border-radius: 9999px; background: var(--t); overflow: hidden; margin-top: .75rem; }
+    .kpi-meter > span { display: block; height: 100%; width: 0; border-radius: 9999px; background: var(--c);
+                        transition: width .5s cubic-bezier(.2,.8,.2,1); }
+    /* ไอคอนในชิปมุมการ์ด (SLA) — สีกลางๆ · is-warn = มีงานค้างจริง (สถานะเตือน: ไอคอน + ข้อความ ไม่ใช่สีอย่างเดียว) */
+    .kpi-icon { width: 2.25rem; height: 2.25rem; border-radius: .75rem; display: inline-flex; align-items: center;
+                justify-content: center; flex: none; background: #f1f5f9; color: var(--ink-2); }
+    .kpi-icon.is-warn { background: #fff7ed; color: #c2410c; }
+
+    .nav-item { color: var(--ink-2); font-weight: 500; transition: background-color .15s, color .15s; }
+    .nav-item:hover { background: #f4f6f8; color: var(--ink); }
     .nav-item.active { background: var(--brand-50); color: var(--brand-700); font-weight: 600; }
-    .viz-bar-track { height: .5rem; border-radius: 9999px; background: #f1f5f9; overflow: hidden; }
+    .viz-bar-track { height: .375rem; border-radius: 9999px; background: #f1f3f6; overflow: hidden; }
     .viz-bar-fill { height: 100%; border-radius: 9999px; }
+
+    /* ช่องกรอก/ตัวเลือก: ขอบบาง มุมมน โฟกัสเป็นวงแสงอ่อน (ทับ border-slate-300 / focus:ring ของ Tailwind ทั้งหน้า)
+       .viz-root นำหน้า = specificity 0,1,1 ชนะ class เดี่ยวของ Tailwind ที่ CDN แทรกทีหลัง */
+    .viz-root input[type="text"], .viz-root input[type="search"], .viz-root input[type="number"],
+    .viz-root select, .viz-root textarea {
+      border-color: var(--line-strong); border-radius: .625rem; background-color: #fff;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .viz-root input[type="text"]:focus, .viz-root input[type="search"]:focus, .viz-root input[type="number"]:focus,
+    .viz-root select:focus, .viz-root textarea:focus {
+      border-color: var(--brand-400); box-shadow: 0 0 0 3px var(--brand-100); outline: none;
+    }
+    .viz-root ::placeholder { color: var(--ink-faint); }
+
+    /* บอร์ด: คอลัมน์พื้นเทาเรียบ (ไม่แต้มสีตามสถานะ) · ยอดในคอลัมน์เป็นป้ายกลมเล็ก */
+    .col-surface { background: var(--col); }
+    .col-count { font-size: .75rem; font-weight: 600; padding: .125rem .5rem; border-radius: 9999px;
+                 background: #fff; color: var(--ink-2); box-shadow: inset 0 0 0 1px var(--line); }
+    .col-count.is-filtered { color: var(--brand-700); box-shadow: inset 0 0 0 1px var(--brand-200); background: var(--brand-50); }
+    .board-col .tk-card { border-color: var(--line); box-shadow: 0 1px 2px rgba(15,23,42,.04);
+                          transition: box-shadow .15s, transform .15s; }
+    .board-col .tk-card:hover { box-shadow: var(--shadow-hover); }
+    @media (hover: hover) { .board-col .tk-card:hover { transform: translateY(-1px); } }
     /* viewBox ของแผนที่กว้างแค่ ~186 หน่วย -> stroke ต้องคิดเป็นหน่วยเดียวกัน ไม่ใช่พิกเซล */
     .map-region { stroke: var(--surface); stroke-width: .5; stroke-linejoin: round; cursor: default; transition: opacity .15s; }
     .map-region:hover { opacity: .82; }
@@ -101,11 +156,17 @@
     .tab-item.active { background: transparent; color: var(--brand-700); }
     .tab-item.active .tab-ico { background: var(--brand-50); }
 
-    /* บอร์ดบนมือถือ: เลื่อนทีละคอลัมน์ (snap) ไม่ให้ค้างคาครึ่งคอลัมน์ */
+    /* บอร์ดบนมือถือ: แสดงทีละคอลัมน์เต็มจอ เลือกด้วยแท็บสถานะ (#boardTabs)
+       เดิมปัดซ้าย-ขวาทีละคอลัมน์ — ไม่รู้ว่าคอลัมน์อื่นมีกี่งานจนกว่าจะปัดไปดู และปัดพลาดง่าย */
     @media (max-width: 767px) {
-      .board-scroll { scroll-snap-type: x mandatory; }
-      .board-col { scroll-snap-align: start; }
+      #board { min-width: 0; width: 100%; }
+      #board .board-col { width: 100%; max-width: none; }
+      #board .board-col:not(.is-mobile-active) { display: none; }
     }
+    .board-tab[aria-selected="true"] { background: #fff; color: var(--ink); box-shadow: 0 1px 2px rgba(15,23,42,.08); }
+    /* การ์ดกดดูรายละเอียดได้ */
+    .board-col .tk-card { cursor: pointer; }
+    .board-col .tk-card:focus-visible { outline: 2px solid var(--brand-500); outline-offset: 2px; }
     /* แผนที่: สูงตามความกว้างจอ ไม่ fix 400px (บนมือถือจะเหลือที่ว่างบน-ล่างเยอะ) */
     .map-svg { width: 100%; height: clamp(260px, 52vw, 400px); }
 
@@ -135,6 +196,13 @@
     @media (hover: none) {
       .card-act { padding: .5rem .75rem; min-height: 40px; display: inline-flex; align-items: center; gap: .25rem; }
     }
+    /* หน้าสถานะ "โหลดไม่สำเร็จ" (ftErrorState ใน common.js) — มีกล่องเดียวต่อหน้า
+       ใส่ .has-error ที่ตัวหน้า = ซ่อนเนื้อหาทั้งหมดแล้วโชว์กล่องนี้แทน (ไม่ต้องห่อเนื้อหาแต่ละหน้าใหม่) */
+    .view-error { display: none; }
+    .has-error > .view-error { display: block; }
+    .has-error > :not(.view-error) { display: none !important; }
+    #viewBoard.has-error { overflow-y: auto; }
+    #boardTools.has-error { display: none; }   /* ไม่มีข้อมูลให้กรอง */
     /* ระหว่างรอหน้าถัดไปจาก DB: จางของเดิมไว้ให้รู้ว่ากำลังโหลด (setBusy ใน admin.js) */
     .is-busy { opacity: .55; transition: opacity .15s; }
   </style>
@@ -144,58 +212,56 @@
   <div class="flex flex-1 min-h-0">
 
     <!-- ================= Sidebar ================= -->
-    <aside class="w-64 shrink-0 bg-white border-r border-slate-200 hidden md:flex flex-col">
-      <div class="px-5 py-5 flex items-center gap-2.5 border-b border-slate-100">
-        <div class="w-9 h-9 rounded-lg bg-[#2563EB] text-white font-bold flex items-center justify-center">F</div>
-        <div class="font-bold text-lg tracking-tight">FAST TICKET</div>
+    <!-- เมนูเป็นภาษาไทยคำเดียว (minimal) — ชื่อเต็มสองภาษายังอยู่ที่หัวหน้าแต่ละหน้า -->
+    <aside class="w-64 shrink-0 bg-white border-r hidden md:flex flex-col" style="border-color:var(--line)">
+      <div class="px-5 h-[72px] flex items-center gap-3">
+        <div class="w-9 h-9 rounded-xl bg-brand-600 text-white font-semibold flex items-center justify-center shadow-sm ring-4 ring-brand-50">F</div>
+        <div class="leading-tight">
+          <div class="font-semibold text-[15px] tracking-tight" style="color:var(--ink)">FAST TICKET</div>
+          <div class="text-xs" style="color:var(--ink-muted)">IT Support Console</div>
+        </div>
       </div>
-      <nav class="p-3 flex-1">
-        <div class="text-[11px] font-semibold text-slate-400 uppercase tracking-wider px-3 py-2">เมนูหลัก</div>
-        <a data-view="dashboard" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-sm mt-1">
-          <span data-icon="layout-dashboard" data-icon-class="w-5 h-5"></span> แดชบอร์ด (Dashboard)</a>
-        <a data-view="board" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-sm mt-1">
-          <span data-icon="square-kanban" data-icon-class="w-5 h-5"></span> ตารางงาน IT (Task Board)</a>
-        <a data-view="kb" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-sm mt-1">
-          <span data-icon="clipboard-list" data-icon-class="w-5 h-5"></span> ประวัติการแจ้งซ่อม</a>
-        <a data-view="users" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-sm mt-1">
-          <span data-icon="users" data-icon-class="w-5 h-5"></span> ผู้ใช้งาน (Users)</a>
-        <a data-view="master" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-sm mt-1">
-          <span data-icon="database" data-icon-class="w-5 h-5"></span> ข้อมูลหลัก (Master Data)</a>
-        <a data-view="settings" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer text-sm mt-1">
-          <span data-icon="settings" data-icon-class="w-5 h-5"></span> ตั้งค่า (Settings)</a>
+      <nav class="px-3 pb-3 pt-2 flex-1 space-y-0.5">
+        <div class="text-xs font-medium px-3 pt-2 pb-2" style="color:var(--ink-faint)">เมนู</div>
+        <a data-view="dashboard" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm">
+          <span data-icon="layout-dashboard" data-icon-class="w-[18px] h-[18px]"></span> แดชบอร์ด</a>
+        <a data-view="board" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm">
+          <span data-icon="square-kanban" data-icon-class="w-[18px] h-[18px]"></span> ตารางงาน</a>
+        <a data-view="kb" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm">
+          <span data-icon="clipboard-list" data-icon-class="w-[18px] h-[18px]"></span> ประวัติการแจ้งซ่อม</a>
+        <a data-view="users" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm">
+          <span data-icon="users" data-icon-class="w-[18px] h-[18px]"></span> ผู้ใช้งาน</a>
+        <a data-view="master" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm">
+          <span data-icon="database" data-icon-class="w-[18px] h-[18px]"></span> ข้อมูลหลัก</a>
+        <div class="text-xs font-medium px-3 pt-5 pb-2" style="color:var(--ink-faint)">ระบบ</div>
+        <a data-view="settings" class="nav-item flex items-center gap-3 px-3 py-2.5 rounded-xl cursor-pointer text-sm">
+          <span data-icon="settings" data-icon-class="w-[18px] h-[18px]"></span> ตั้งค่า</a>
       </nav>
-      <div class="p-3 border-t border-slate-100 text-[11px] text-slate-400">Dashboard · Task Board · ประวัติการแจ้งซ่อม · Users · ข้อมูลหลัก · Settings</div>
+      <div class="px-5 py-4 text-xs leading-relaxed" style="color:var(--ink-faint)">สำนักงานสรรพสามิตภาคที่ 9<br>ส่วนเทคโนโลยีสารสนเทศ</div>
     </aside>
 
     <!-- ================= Main ================= -->
     <main class="flex-1 flex flex-col min-w-0">
 
       <!-- Topbar -->
-      <header class="bg-white border-b border-slate-200 px-3.5 md:px-5 py-3 md:py-3.5 flex items-center justify-between gap-2 shrink-0">
+      <header class="bg-white/90 backdrop-blur border-b px-3.5 md:px-6 h-[64px] md:h-[72px] flex items-center justify-between gap-2 shrink-0" style="border-color:var(--line)">
         <!-- min-w-0 + truncate: หัวข้อยาว (เช่น "ตารางงาน IT Support (Task Board)") ต้องหดได้
              ไม่งั้นบนมือถือมันจะดันปุ่มบัญชีตกขอบจอ -->
         <div class="min-w-0">
-          <h1 id="viewTitle" class="font-bold text-base md:text-lg leading-tight truncate">ตารางงาน IT Support (Task Board)</h1>
-          <p id="viewSubtitle" class="text-xs text-slate-500 hidden sm:block truncate">จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ</p>
+          <h1 id="viewTitle" class="font-semibold text-base md:text-xl tracking-tight leading-tight truncate" style="color:var(--ink)">ตารางงาน</h1>
+          <p id="viewSubtitle" class="text-xs md:text-[13px] hidden sm:block truncate mt-0.5" style="color:var(--ink-muted)">จัดการคิวงานแบบ Kanban · ลากการ์ดเพื่อเปลี่ยนสถานะ</p>
         </div>
-        <div class="flex items-center gap-1.5 shrink-0">
-          <button id="refreshBtn" title="โหลดใหม่" aria-label="โหลดใหม่" class="w-10 h-10 flex items-center justify-center rounded-lg hover:bg-slate-100 active:bg-slate-200 text-slate-500"><span data-icon="refresh-cw" data-icon-class="w-5 h-5"></span></button>
-          <button id="staffBtn" class="flex items-center gap-2 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 rounded-full pl-1.5 pr-2.5 md:pl-2 md:pr-3 py-1.5 text-sm font-medium transition-colors min-h-[40px]">
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="refreshBtn" title="โหลดใหม่" aria-label="โหลดใหม่" class="w-10 h-10 flex items-center justify-center rounded-xl border bg-white hover:bg-slate-50 active:bg-slate-100 text-slate-500 transition-colors" style="border-color:var(--line)"><span data-icon="refresh-cw" data-icon-class="w-[18px] h-[18px]"></span></button>
+          <button id="staffBtn" class="flex items-center gap-2 bg-white border hover:bg-slate-50 active:bg-slate-100 rounded-full pl-1 pr-2.5 md:pr-3.5 py-1 text-sm font-medium transition-colors min-h-[40px]" style="border-color:var(--line)">
             <span class="w-8 h-8 rounded-full bg-brand-600 text-white text-xs flex items-center justify-center shrink-0 overflow-hidden" id="staffAvatar">?</span>
             <div class="text-left min-w-0">
               <div id="staffName" class="text-slate-600 truncate max-w-[5.5rem] sm:max-w-[10rem] text-sm font-medium leading-tight">เข้าสู่ระบบ LINE</div>
-              <div id="staffInfo" class="hidden text-[10px] text-slate-400 truncate max-w-[5.5rem] sm:max-w-[10rem] leading-tight"></div>
+              <div id="staffInfo" class="hidden text-[11px] text-slate-400 truncate max-w-[5.5rem] sm:max-w-[10rem] leading-tight"></div>
             </div>
           </button>
         </div>
       </header>
-
-      <!-- Mock banner -->
-      <div id="mockBanner" class="hidden bg-amber-50 border-b border-amber-200 text-amber-800 text-xs px-5 py-2 flex items-center gap-2">
-        <span data-icon="triangle-alert" data-icon-class="w-4 h-4"></span>
-        <span><b>โหมดตัวอย่าง</b> — เชื่อมต่อ backend ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง · การเปลี่ยนสถานะจะยังไม่บันทึกจริง (กดปุ่มโหลดใหม่มุมขวาบนเพื่อลองใหม่)
-          <span id="mockReason" class="block mt-0.5 opacity-80"></span></span>
-      </div>
 
       <!-- แถบ "ข้อมูลเก่ากำลังอัปเดต" — โผล่เฉพาะตอนวาดจากแคชระหว่างรอของใหม่
            ต้องบอกให้ชัด ไม่งั้นผู้ใช้จะเข้าใจว่าตัวเลขที่เห็นสดแล้ว -->
@@ -204,11 +270,11 @@
         <span id="staleText" class="min-w-0 truncate"></span>
       </div>
 
-      <!-- แถบเตือนเซสชันหมดอายุ — แยกจากแถบ "โหมดตัวอย่าง" เพราะผู้ใช้ต้องทำคนละอย่าง
-           (อันนั้นกดโหลดใหม่ก็พอ อันนี้ต้อง login ใหม่เท่านั้น) -->
+      <!-- แถบเตือนเซสชันหมดอายุตอน "บันทึก" ไม่สำเร็จ (โหลดหน้าไม่สำเร็จใช้หน้าสถานะ .view-error แทน)
+           บอกให้ login ใหม่ ไม่งั้นผู้ใช้จะกดซ้ำไปเรื่อยๆ โดยไม่รู้ว่าทำไมไม่บันทึก -->
       <div id="authBanner" class="hidden bg-red-50 border-b border-red-200 text-red-800 text-xs px-3.5 md:px-5 py-2.5 flex items-center gap-2 md:gap-3 shrink-0">
         <span data-icon="lock" data-icon-class="w-4 h-4"></span>
-        <span class="flex-1 min-w-0"><b>เซสชันหมดอายุ</b> — ข้อมูลที่เห็นอยู่เป็นข้อมูลจำลอง ไม่ใช่ของจริง และการแก้ไขจะไม่ถูกบันทึก
+        <span class="flex-1 min-w-0"><b>เซสชันหมดอายุ</b> — การแก้ไขจะไม่ถูกบันทึกจนกว่าจะเข้าสู่ระบบใหม่
           <span id="authReason" class="block mt-0.5 break-words font-medium"></span></span>
         <button id="authReloginBtn" class="shrink-0 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-semibold px-3 py-1.5 rounded-lg min-h-[40px] transition-colors">เข้าสู่ระบบใหม่</button>
       </div>
@@ -216,17 +282,25 @@
       <!-- ================= แถบเครื่องมือของบอร์ด =================
            อยู่ "นอก" #viewBoard เพราะ #viewBoard เป็นตัวเลื่อนแนวนอน ถ้าเอาไว้ข้างในแถบนี้
            จะเลื่อนหายไปพร้อมคอลัมน์ · switchView จึงต้องซ่อน/แสดงตัวนี้เองตอนสลับหน้า -->
-      <div id="boardTools" class="shrink-0 bg-white border-b border-slate-200 px-3 md:px-4 py-2 flex items-center gap-2 overflow-x-auto">
-        <input id="boardSearch" type="search" placeholder="ค้นหา รหัส / อาการ / ชื่อผู้แจ้ง"
-               class="shrink-0 w-44 sm:w-64 border border-slate-300 rounded-lg px-3 py-1.5 text-sm min-h-[40px] focus:ring-2 focus:ring-brand-500 outline-none">
-        <select id="boardCat"  class="shrink-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-h-[40px] bg-white outline-none focus:ring-2 focus:ring-brand-500"></select>
-        <select id="boardProv" class="shrink-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-h-[40px] bg-white outline-none focus:ring-2 focus:ring-brand-500"></select>
-        <select id="boardSort" class="shrink-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-h-[40px] bg-white outline-none focus:ring-2 focus:ring-brand-500">
+      <!-- มือถือ: ช่องค้นหา + ปุ่ม "ตัวกรอง" (เปิดเป็นตาราง 2 คอลัมน์) + แท็บสถานะ · จอใหญ่: ทุกอย่างเรียงแถวเดียว
+           (เดิมมือถือเป็นแถวยาวเลื่อนข้าง ช่องค้นหาถูกตัดคำ และไม่รู้ว่ามีตัวกรองซ่อนอยู่ทางขวา) -->
+      <div id="boardTools" class="shrink-0 bg-white border-b px-3 md:px-6 py-2.5 flex flex-col gap-2" style="border-color:var(--line)">
+       <div class="flex flex-wrap items-center gap-2">
+        <input id="boardSearch" type="search" placeholder="ค้นหา รหัส / อาการ / ชื่อผู้แจ้ง" aria-label="ค้นหางาน"
+               class="flex-1 min-w-0 md:flex-none md:w-64 border border-slate-300 rounded-lg px-3 py-1.5 text-sm min-h-[40px] focus:ring-2 focus:ring-brand-500 outline-none">
+        <button id="boardFilterToggle" type="button" aria-expanded="false" aria-controls="boardFilters"
+                class="md:hidden shrink-0 inline-flex items-center gap-1.5 bg-slate-100 text-slate-700 hover:bg-slate-200 rounded-[10px] px-3 text-sm font-medium min-h-[40px]">
+          <span data-icon="sliders-horizontal" data-icon-class="w-4 h-4"></span>ตัวกรอง<span id="boardFilterBadge" class="hidden min-w-[20px] h-5 px-1 rounded-full bg-brand-600 text-white text-xs leading-5 text-center"></span>
+        </button>
+        <div id="boardFilters" class="hidden w-full grid grid-cols-2 gap-2 md:w-auto md:flex md:flex-wrap md:items-center">
+        <select id="boardCat" aria-label="หมวดหมู่" class="shrink-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-h-[40px] bg-white outline-none focus:ring-2 focus:ring-brand-500"></select>
+        <select id="boardProv" aria-label="พื้นที่" class="shrink-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-h-[40px] bg-white outline-none focus:ring-2 focus:ring-brand-500"></select>
+        <select id="boardSort" aria-label="การเรียงลำดับ" class="shrink-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-h-[40px] bg-white outline-none focus:ring-2 focus:ring-brand-500">
           <option value="new">ใหม่สุดก่อน</option>
           <option value="old">เก่าสุดก่อน</option>
         </select>
-        <button id="boardMine" class="shrink-0 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium min-h-[40px] transition-colors">งานของฉัน</button>
-        <button id="boardCompact" class="shrink-0 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-lg px-3 py-1.5 text-sm font-medium min-h-[40px] transition-colors">กะทัดรัด</button>
+        <button id="boardMine" class="shrink-0 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-[10px] px-3 py-1.5 text-sm font-medium min-h-[40px] transition-colors">งานของฉัน</button>
+        <button id="boardCompact" class="shrink-0 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-[10px] px-3 py-1.5 text-sm font-medium min-h-[40px] transition-colors">กะทัดรัด</button>
         <!-- มีผลกับคอลัมน์ "เสร็จสิ้น" เท่านั้น (งานที่ยังไม่เสร็จแสดงเสมอ) — คำว่า "ปิดงาน: ทั้งหมด"
              อ่านแล้วเหมือนปุ่มสั่งปิดงานทุกใบ จึงใช้ "งานเสร็จ" ให้ตรงกับชื่อคอลัมน์ -->
         <select id="boardClosedDays" title="คอลัมน์เสร็จสิ้น: แสดงเฉพาะงานที่ปิดภายในช่วงนี้" aria-label="ช่วงเวลาของงานที่เสร็จแล้ว" class="shrink-0 border border-slate-300 rounded-lg px-2 py-1.5 text-sm min-h-[40px] bg-white outline-none focus:ring-2 focus:ring-brand-500">
@@ -235,11 +309,16 @@
           <option value="0">งานเสร็จทั้งหมด</option>
         </select>
         <button id="boardReset" class="shrink-0 text-slate-500 hover:text-slate-700 text-sm px-2 py-1.5 min-h-[40px]">ล้างตัวกรอง</button>
-        <span id="boardCount" class="shrink-0 text-xs text-slate-500 ml-auto pl-2 whitespace-nowrap"></span>
+        </div>
+        <span id="boardCount" class="hidden md:inline shrink-0 text-xs text-slate-500 ml-auto pl-2 whitespace-nowrap"></span>
+       </div>
+       <!-- แท็บสถานะ (มือถือ) — ยอดในวงเล็บ = จำนวนงานของคอลัมน์นั้น (ตามตัวกรอง) -->
+       <div id="boardTabs" class="md:hidden grid grid-cols-3 gap-1 p-1 rounded-xl bg-slate-100" role="tablist" aria-label="สถานะงาน"></div>
       </div>
 
       <!-- ================= View: Task Board ================= -->
-      <div id="viewBoard" class="board-scroll flex-1 overflow-x-auto overflow-y-hidden p-3 md:p-4">
+      <div id="viewBoard" class="board-scroll flex-1 overflow-x-auto overflow-y-hidden p-3 md:p-6">
+        <div id="boardError" class="view-error viz-card" aria-live="polite"></div>
         <div id="board" class="flex gap-3 md:gap-4 h-full min-w-max">
           <!-- คอลัมน์ถูกสร้างด้วย JS -->
           <div id="boardLoading" class="flex gap-3 md:gap-4" aria-label="กำลังโหลดตั๋ว" role="status">
@@ -249,57 +328,72 @@
       </div>
 
       <!-- ================= View: Dashboard ================= -->
-      <div id="viewDashboard" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
+      <div id="viewDashboard" class="hidden flex-1 overflow-y-auto p-3 md:p-6 flex flex-col gap-3 md:gap-5 [&>*]:shrink-0">
+
+        <div id="dashError" class="view-error viz-card" aria-live="polite"></div>
 
         <!-- KPI row — stat tiles (ตัวเลขพาดหัว ไม่ใช่กราฟแท่ง) -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3">
-          <div class="viz-card">
-            <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--ink-muted)"></span>ตั๋วทั้งหมด</div>
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
+          <!-- ตัวเลขนำของหน้า (hero) มีใบเดียว · อีก 3 ใบมีแถบสัดส่วนเทียบตั๋วทั้งหมด (meter) -->
+          <div class="viz-card flex flex-col">
+            <div class="viz-kpi-label">ตั๋วทั้งหมด</div>
             <div class="viz-hero" id="kpiTotal">—</div>
-            <div class="viz-kpi-sub">All tickets</div>
+            <div class="viz-kpi-sub mt-auto pt-3">ไม่รวมงานที่ยกเลิก</div>
           </div>
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--st-open)"></span>รอรับเรื่อง</div>
             <div class="viz-kpi-value" id="kpiOpen">—</div>
+            <div class="kpi-meter" style="--c:var(--st-open);--t:var(--st-open-soft)" role="presentation"><span id="kpiOpenBar"></span></div>
             <div class="viz-kpi-sub" id="kpiOpenPct">Open · 0%</div>
           </div>
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--st-prog)"></span>กำลังดำเนินการ</div>
             <div class="viz-kpi-value" id="kpiProg">—</div>
+            <div class="kpi-meter" style="--c:var(--st-prog);--t:var(--st-prog-soft)" role="presentation"><span id="kpiProgBar"></span></div>
             <div class="viz-kpi-sub" id="kpiProgPct">In Progress · 0%</div>
           </div>
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--st-done)"></span>เสร็จสิ้น</div>
             <div class="viz-kpi-value" id="kpiDone">—</div>
+            <div class="kpi-meter" style="--c:var(--st-done);--t:var(--st-done-soft)" role="presentation"><span id="kpiDoneBar"></span></div>
             <div class="viz-kpi-sub" id="kpiDonePct">Closed · 0%</div>
           </div>
         </div>
 
         <!-- SLA tiles -->
-        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 md:gap-3">
-          <div class="viz-card">
-            <div class="viz-kpi-label"><span data-icon="timer" data-icon-class="w-4 h-4"></span>เวลาเฉลี่ยกว่าจะรับงาน</div>
-            <div class="viz-kpi-value" id="slaAccept">—</div>
-            <div class="viz-kpi-sub" id="slaAcceptNote">แจ้ง → รับเรื่อง</div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 md:gap-5">
+          <div class="viz-card flex items-start gap-3.5">
+            <span class="kpi-icon"><span data-icon="timer" data-icon-class="w-[18px] h-[18px]"></span></span>
+            <div class="min-w-0">
+              <div class="viz-kpi-label">เวลาเฉลี่ยกว่าจะรับงาน</div>
+              <div class="viz-kpi-value !mt-1" id="slaAccept">—</div>
+              <div class="viz-kpi-sub !mt-1" id="slaAcceptNote">แจ้ง → รับเรื่อง</div>
+            </div>
           </div>
-          <div class="viz-card">
-            <div class="viz-kpi-label"><span data-icon="circle-check" data-icon-class="w-4 h-4"></span>เวลาเฉลี่ยกว่าจะปิดงาน</div>
-            <div class="viz-kpi-value" id="slaClose">—</div>
-            <div class="viz-kpi-sub" id="slaCloseNote">แจ้ง → เสร็จสิ้น</div>
+          <div class="viz-card flex items-start gap-3.5">
+            <span class="kpi-icon"><span data-icon="circle-check" data-icon-class="w-[18px] h-[18px]"></span></span>
+            <div class="min-w-0">
+              <div class="viz-kpi-label">เวลาเฉลี่ยกว่าจะปิดงาน</div>
+              <div class="viz-kpi-value !mt-1" id="slaClose">—</div>
+              <div class="viz-kpi-sub !mt-1" id="slaCloseNote">แจ้ง → เสร็จสิ้น</div>
+            </div>
           </div>
-          <div class="viz-card">
-            <div class="viz-kpi-label"><span data-icon="flame" data-icon-class="w-4 h-4"></span><span id="slaAgingLabel">ค้างเกิน 3 วัน (ยังไม่รับ)</span></div>
-            <div class="viz-kpi-value" id="slaAging">0</div>
-            <div class="viz-kpi-sub">ต้องเร่งจัดการ</div>
+          <div class="viz-card flex items-start gap-3.5">
+            <span class="kpi-icon" id="slaAgingIcon"><span data-icon="flame" data-icon-class="w-[18px] h-[18px]"></span></span>
+            <div class="min-w-0">
+              <div class="viz-kpi-label"><span id="slaAgingLabel">ค้างเกิน 3 วัน (ยังไม่รับ)</span></div>
+              <div class="viz-kpi-value !mt-1" id="slaAging">0</div>
+              <div class="viz-kpi-sub !mt-1" id="slaAgingNote">ต้องเร่งจัดการ</div>
+            </div>
           </div>
         </div>
 
         <!-- Trend + Category -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-5">
           <div class="viz-card lg:col-span-2">
             <div class="viz-title">ตั๋วแจ้งเข้าใหม่ · 30 วันล่าสุด</div>
             <div class="viz-sub">นับตามวันที่แจ้ง · แตะจุดเพื่อดูตัวเลข</div>
-            <div class="relative mt-3">
+            <div class="relative mt-4">
               <!-- viewBox/ความสูงถูกคำนวณใหม่ตามความกว้างจริงใน renderTrend()
                    ถ้า fix ไว้ 640x170 บนมือถือ SVG จะย่อจนตัวหนังสือเหลือ ~5px อ่านไม่ออก -->
               <svg id="trendChart" viewBox="0 0 640 170" class="w-full" style="height:170px" role="img" aria-label="กราฟจำนวนตั๋วแจ้งเข้าใหม่รายวัน 30 วันล่าสุด"></svg>
@@ -309,12 +403,12 @@
           <div class="viz-card">
             <div class="viz-title">หมวดหมู่ปัญหา</div>
             <div class="viz-sub">เทียบจำนวนตั๋วแต่ละหมวด</div>
-            <div id="catBars" class="mt-3 space-y-3"></div>
+            <div id="catBars" class="mt-4 space-y-3.5"></div>
           </div>
         </div>
 
         <!-- Map + Province ranking -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-5">
           <div class="viz-card lg:col-span-2">
             <div class="viz-title">แผนที่พื้นที่ 7 จังหวัดภาคใต้ตอนล่าง</div>
             <div class="viz-sub">สีเข้ม = ตั๋วเยอะ · แตะ/วางเมาส์บนจังหวัดเพื่อดูรายละเอียด</div>
@@ -323,23 +417,23 @@
               <div id="mapTip" class="viz-tip hidden"></div>
             </div>
             <div class="flex items-center justify-between gap-2 mt-1">
-              <div id="mapLegend" class="flex items-center gap-1.5 text-[11px]" style="color:var(--ink-muted)"></div>
-              <a href="https://simplemaps.com" target="_blank" rel="noopener" class="text-[10px] hover:underline" style="color:var(--ink-muted)">แผนที่โดย simplemaps.com</a>
+              <div id="mapLegend" class="flex items-center gap-1.5 text-xs" style="color:var(--ink-muted)"></div>
+              <a href="https://simplemaps.com" target="_blank" rel="noopener" class="text-[11px] hover:underline" style="color:var(--ink-muted)">แผนที่โดย simplemaps.com</a>
             </div>
           </div>
           <div class="viz-card">
             <div class="viz-title">จัดอันดับพื้นที่</div>
             <div class="viz-sub">ตามจำนวนตั๋วสะสม</div>
-            <div id="provBars" class="mt-3 space-y-3"></div>
+            <div id="provBars" class="mt-4 space-y-3.5"></div>
           </div>
         </div>
 
         <!-- Workload + Aging table -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-4">
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-3 md:gap-5">
           <div class="viz-card">
             <div class="viz-title">ภาระงานเจ้าหน้าที่</div>
             <div class="viz-sub">ตั๋วที่รับผิดชอบอยู่</div>
-            <div id="staffBars" class="mt-3 space-y-3"></div>
+            <div id="staffBars" class="mt-4 space-y-3.5"></div>
           </div>
           <div class="viz-card lg:col-span-2">
             <div class="viz-title">ตั๋วค้างนานที่สุด (ยังไม่รับเรื่อง)</div>
@@ -351,7 +445,7 @@
                 <thead>
                   <!-- "พื้นที่" ซ่อนบนจอเล็ก — 4 คอลัมน์ไม่พอใน 360px ทำให้ต้องเลื่อนแนวนอน
                        ทั้งที่คอลัมน์นี้เป็นข้อมูลรอง (ดูเต็มได้ที่แผนที่/อันดับพื้นที่ด้านบน) -->
-                  <tr class="text-left text-[11px] uppercase tracking-wider" style="color:var(--ink-muted)">
+                  <tr class="text-left text-xs uppercase tracking-wider" style="color:var(--ink-muted)">
                     <th class="py-2 pr-3 font-semibold w-[24%] sm:w-auto">รหัส</th>
                     <th class="py-2 pr-3 font-semibold">รายละเอียด</th>
                     <th class="py-2 pr-3 font-semibold hidden sm:table-cell">พื้นที่</th>
@@ -367,17 +461,12 @@
       </div>
 
       <!-- ================= View: Users ================= -->
-      <div id="viewUsers" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
+      <div id="viewUsers" class="hidden flex-1 overflow-y-auto p-3 md:p-6 flex flex-col gap-3 md:gap-5 [&>*]:shrink-0">
 
-        <!-- แถบเตือนโหมดตัวอย่างของโมดูลนี้ (เรียก getUsers ไม่สำเร็จ) -->
-        <div id="usersMockBanner" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2 rounded-lg flex items-center gap-2">
-          <span data-icon="triangle-alert" data-icon-class="w-4 h-4"></span>
-          <span><b>โหมดตัวอย่าง</b> — เรียก getUsers ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง · การเปลี่ยนบทบาทจะยังไม่บันทึกจริง
-            <span id="usersMockReason" class="block mt-0.5 opacity-80"></span></span>
-        </div>
+        <div id="usersError" class="view-error viz-card" aria-live="polite"></div>
 
         <!-- KPI row -->
-        <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 md:gap-3">
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-5">
           <div class="viz-card">
             <div class="viz-kpi-label"><span class="viz-dot" style="background:var(--ink-muted)"></span>ผู้ใช้ทั้งหมด</div>
             <div class="viz-hero" id="usrTotal">0</div>
@@ -429,7 +518,7 @@
           <div class="overflow-x-auto mt-3">
             <table class="w-full text-sm table-fixed lg:table-auto">
               <thead>
-                <tr class="text-left text-[11px] uppercase tracking-wider" style="color:var(--ink-muted)">
+                <tr class="text-left text-xs uppercase tracking-wider" style="color:var(--ink-muted)">
                   <th class="py-2 pr-3 font-semibold w-[58%] sm:w-[44%] lg:w-auto">ผู้ใช้</th>
                   <th class="py-2 pr-3 font-semibold hidden lg:table-cell">ตำแหน่ง</th>
                   <th class="py-2 pr-3 font-semibold hidden lg:table-cell">สังกัด</th>
@@ -445,7 +534,7 @@
           </div>
           <!-- แบ่งหน้า: ดึงจาก DB ทีละ 20 คน (วาดโดย renderPager) -->
           <div id="usersPager" class="hidden mt-3 flex items-center justify-between gap-2"></div>
-          <div id="usersEditNote" class="hidden mt-2 text-[11px]" style="color:var(--ink-muted)">
+          <div id="usersEditNote" class="hidden mt-2 text-xs" style="color:var(--ink-muted)">
             <span data-icon="lock" data-icon-class="w-3.5 h-3.5 inline -mt-0.5"></span> การเปลี่ยนบทบาทเปิดเฉพาะบัญชีที่มีสิทธิ์แอดมิน — บัญชีของคุณยังไม่ใช่แอดมิน
           </div>
         </div>
@@ -453,13 +542,9 @@
       </div>
 
       <!-- ================= View: Knowledge Base ================= -->
-      <div id="viewKB" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
+      <div id="viewKB" class="hidden flex-1 overflow-y-auto p-3 md:p-6 flex flex-col gap-3 md:gap-5 [&>*]:shrink-0">
 
-        <div id="kbMockBanner" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2 rounded-lg flex items-center gap-2">
-          <span data-icon="triangle-alert" data-icon-class="w-4 h-4"></span>
-          <span><b>โหมดตัวอย่าง</b> — เรียก getKnowledgeBase ไม่สำเร็จ กำลังแสดงข้อมูลจำลอง
-            <span id="kbMockReason" class="block mt-0.5 opacity-80"></span></span>
-        </div>
+        <div id="kbError" class="view-error viz-card" aria-live="polite"></div>
 
         <div class="viz-card">
           <div class="flex flex-wrap items-center justify-between gap-3">
@@ -485,19 +570,15 @@
       </div>
 
       <!-- ================= View: Master Data ================= -->
-      <div id="viewMaster" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4">
+      <div id="viewMaster" class="hidden flex-1 overflow-y-auto p-3 md:p-6 flex flex-col gap-3 md:gap-5 [&>*]:shrink-0">
 
-        <div id="masterErrorBanner" class="hidden bg-amber-50 border border-amber-200 text-amber-800 text-xs px-4 py-2 rounded-lg flex items-center gap-2">
-          <span data-icon="triangle-alert" data-icon-class="w-4 h-4"></span>
-          <span><b>โหลดข้อมูลหลักไม่สำเร็จ</b>
-            <span id="masterErrorReason" class="block mt-0.5 opacity-80"></span></span>
-        </div>
+        <div id="masterError" class="view-error viz-card" aria-live="polite"></div>
 
         <div class="viz-card">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <div>
               <div class="viz-title">ข้อมูลหลัก</div>
-              <div class="viz-sub">ตัวเลือกในฟอร์มแจ้งซ่อม · ลบได้เฉพาะรายการที่ยังไม่มีตั๋วหรือผู้ใช้อ้างถึง · แก้ไขได้เฉพาะ Admin</div>
+              <div id="masterSub" class="viz-sub">ตัวเลือกในฟอร์มแจ้งซ่อม · ลบได้เฉพาะรายการที่ยังไม่มีตั๋วหรือผู้ใช้อ้างถึง</div>
             </div>
             <button id="masterAddBtn" class="px-3 py-2 sm:py-1.5 rounded-lg text-sm font-medium bg-brand-600 text-white hover:bg-brand-700 min-h-[40px] sm:min-h-0 inline-flex items-center gap-1.5"><span data-icon="plus" data-icon-class="w-4 h-4"></span>เพิ่ม<span id="masterAddLabel"></span></button>
           </div>
@@ -514,11 +595,11 @@
       </div>
 
       <!-- ================= View: Settings ================= -->
-      <div id="viewSettings" class="hidden flex-1 overflow-y-auto p-3 md:p-4 space-y-3 md:space-y-4 max-w-2xl">
+      <div id="viewSettings" class="hidden flex-1 overflow-y-auto p-3 md:p-6 flex flex-col gap-3 md:gap-5 [&>*]:shrink-0 max-w-3xl">
 
         <div class="viz-card">
-          <div class="viz-title">บัญชีของฉัน</div>
-          <div class="viz-sub">ตัวตนจากการเข้าสู่ระบบ LINE ปัจจุบัน</div>
+          <div class="viz-title">เกี่ยวกับฉัน</div>
+          <div class="viz-sub">ข้อมูลเจ้าหน้าที่ของบัญชี LINE ที่เข้าสู่ระบบอยู่</div>
           <div id="settingsAccountBox" class="mt-3"></div>
         </div>
 
@@ -532,7 +613,7 @@
             <span class="text-sm" style="color:var(--ink-2)">วัน</span>
             <span id="agingSavedNote" class="hidden text-xs" style="color:var(--st-done)"><span data-icon="check" data-icon-class="w-3.5 h-3.5 inline -mt-0.5"></span> บันทึกแล้ว</span>
           </div>
-          <div class="text-[11px] mt-2" style="color:var(--ink-muted)">ตั้งค่านี้เก็บไว้ในเบราว์เซอร์นี้เท่านั้น (ไม่ใช่ค่าส่วนกลาง)</div>
+          <div class="text-xs mt-2" style="color:var(--ink-muted)">ตั้งค่านี้เก็บไว้ในเบราว์เซอร์นี้เท่านั้น (ไม่ใช่ค่าส่วนกลาง)</div>
         </div>
 
       </div>
@@ -543,25 +624,25 @@
   <!-- ================= แถบเมนูล่าง (เฉพาะมือถือ) =================
        ใช้ class "nav-item" เหมือน sidebar -> ตัว JS เดิม (querySelectorAll('.nav-item'))
        ผูก event + toggle .active ให้ทั้งสองชุดอัตโนมัติ ไม่ต้องแก้ลอจิกสลับหน้า -->
-  <nav class="md:hidden shrink-0 bg-white border-t border-slate-200 grid grid-cols-6 safe-b">
+  <nav id="tabBar" class="md:hidden shrink-0 bg-white border-t border-slate-200 grid grid-cols-6 safe-b">
     <a data-view="dashboard" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
       <span class="tab-ico text-base leading-none px-3 py-1 rounded-full" data-icon="layout-dashboard" data-icon-class="w-5 h-5"></span>
-      <span class="text-[10px] font-medium">แดชบอร์ด</span></a>
+      <span class="text-[11px] font-medium">แดชบอร์ด</span></a>
     <a data-view="board" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
       <span class="tab-ico text-base leading-none px-3 py-1 rounded-full" data-icon="square-kanban" data-icon-class="w-5 h-5"></span>
-      <span class="text-[10px] font-medium">ตารางงาน</span></a>
+      <span class="text-[11px] font-medium">ตารางงาน</span></a>
     <a data-view="kb" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
       <span class="tab-ico text-base leading-none px-3 py-1 rounded-full" data-icon="clipboard-list" data-icon-class="w-5 h-5"></span>
-      <span class="text-[10px] font-medium">ประวัติ</span></a>
+      <span class="text-[11px] font-medium">ประวัติ</span></a>
     <a data-view="users" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
       <span class="tab-ico text-base leading-none px-3 py-1 rounded-full" data-icon="users" data-icon-class="w-5 h-5"></span>
-      <span class="text-[10px] font-medium">ผู้ใช้งาน</span></a>
+      <span class="text-[11px] font-medium">ผู้ใช้งาน</span></a>
     <a data-view="master" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
       <span class="tab-ico text-base leading-none px-3 py-1 rounded-full" data-icon="database" data-icon-class="w-5 h-5"></span>
-      <span class="text-[10px] font-medium">ข้อมูลหลัก</span></a>
+      <span class="text-[11px] font-medium">ข้อมูลหลัก</span></a>
     <a data-view="settings" class="nav-item tab-item flex flex-col items-center gap-0.5 py-1.5 cursor-pointer select-none">
       <span class="tab-ico text-base leading-none px-3 py-1 rounded-full" data-icon="settings" data-icon-class="w-5 h-5"></span>
-      <span class="text-[10px] font-medium">ตั้งค่า</span></a>
+      <span class="text-[11px] font-medium">ตั้งค่า</span></a>
   </nav>
 
   <!-- ================= Close-ticket Modal (ผูกกับ Knowledge Base) ================= -->
@@ -635,7 +716,7 @@
           <label for="masterName" class="text-xs font-medium text-slate-500">ชื่อ</label>
           <input id="masterName" type="text" maxlength="100"
                  class="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm mt-1.5 focus:ring-2 focus:ring-brand-500 outline-none">
-          <div id="masterNameHint" class="hidden text-[11px] mt-1" style="color:var(--ink-muted)"></div>
+          <div id="masterNameHint" class="hidden text-xs mt-1" style="color:var(--ink-muted)"></div>
         </div>
         <div id="masterProvinceRow">
           <label for="masterProvince" class="text-xs font-medium text-slate-500">จังหวัด</label>
@@ -648,6 +729,26 @@
         <button id="masterCancelBtn" class="px-4 py-3 sm:py-2 rounded-lg text-sm font-medium text-slate-500 hover:bg-slate-100">ยกเลิก</button>
         <button id="masterSaveBtn" class="px-4 py-3 sm:py-2 rounded-lg text-sm font-bold text-white bg-brand-600 hover:bg-brand-700">บันทึก</button>
       </div>
+    </div>
+  </div>
+
+  <!-- ================= รายละเอียดตั๋ว (กดที่การ์ดบนบอร์ด) =================
+       มือถือ: bottom sheet · จอใหญ่: แผงด้านขวา (ยังเห็นบอร์ดด้านหลัง)
+       z-40 ต่ำกว่า modal ปิดงาน/PDF (z-50) — กดจากแผงนี้แล้ว modal เหล่านั้นขึ้นทับได้ -->
+  <div id="ticketDrawer" class="hidden fixed inset-0 z-40 bg-black/40 flex items-end md:items-stretch md:justify-end" role="dialog" aria-modal="true" aria-labelledby="tdTitle">
+    <div class="bg-white w-full md:w-[440px] max-h-[92dvh] md:max-h-none md:h-full rounded-t-2xl md:rounded-none shadow-2xl flex flex-col safe-b">
+      <div class="flex items-start justify-between gap-3 px-5 pt-4 pb-3 border-b" style="border-color:var(--line)">
+        <div class="min-w-0">
+          <div class="flex items-center gap-2 flex-wrap">
+            <h2 id="tdTitle" class="font-semibold text-lg" style="color:var(--ink)"></h2>
+            <span id="tdStatus"></span><span id="tdCat"></span>
+          </div>
+          <div id="tdSub" class="text-xs mt-0.5" style="color:var(--ink-muted)"></div>
+        </div>
+        <button id="tdClose" type="button" aria-label="ปิดรายละเอียด" class="w-10 h-10 -mr-2 shrink-0 flex items-center justify-center rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100"><span data-icon="x" data-icon-class="w-5 h-5"></span></button>
+      </div>
+      <div id="tdBody" class="flex-1 overflow-y-auto px-5 py-4 space-y-4"></div>
+      <div id="tdActions" class="shrink-0 px-5 py-3 border-t flex flex-wrap items-center gap-2" style="border-color:var(--line)"></div>
     </div>
   </div>
 

@@ -28,7 +28,8 @@ CREATE TABLE "TICKET" ("Ticket_ID" serial PRIMARY KEY, "Created_Date" timestampt
   "Closed_Date" timestamptz, "LINE_User_ID" varchar(50) NOT NULL REFERENCES "USER", "Office_ID" int REFERENCES "EXCISE_OFFICE",
   "Category_ID" int NOT NULL REFERENCES "ISSUE_CATEGORY", "Issue_Detail" text NOT NULL, "Image_URL" text, "Doc_PDF_URL" text,
   "Status" smallint NOT NULL CHECK ("Status" BETWEEN 1 AND 3), "IT_In_Charge" varchar(50) REFERENCES "USER",
-  "Branch_ID" int REFERENCES "BRANCH", "Dept_ID" int REFERENCES "DEPARTMENT", "Deleted_At" timestamptz, "Deleted_By" varchar(50) REFERENCES "USER");
+  "Branch_ID" int REFERENCES "BRANCH", "Dept_ID" int REFERENCES "DEPARTMENT", "Deleted_At" timestamptz, "Deleted_By" varchar(50) REFERENCES "USER",
+  "Contact_Phone" varchar(30));
 CREATE TABLE "KNOWLEDGE_BASE" ("KB_ID" serial PRIMARY KEY, "Ticket_ID" int NOT NULL REFERENCES "TICKET", "Category_ID" int REFERENCES "ISSUE_CATEGORY",
   "Resolution_Text" text NOT NULL, "Created_Date" timestamptz DEFAULT now(), "Created_By" varchar(50) NOT NULL REFERENCES "USER");
 `);
@@ -167,6 +168,20 @@ window.Utilities = {
   newBlob: (d) => { const bytes = typeof d === 'string' ? Array.from(enc.encode(d)) : d;
     return { getBytes: () => bytes, getDataAsString: () => new TextDecoder().decode(new Uint8Array(bytes)) }; },
   gzip: (b) => b, ungzip: (b) => b,
+};
+// Drive: file id from the content, so doPost reruns (see gasCall) get the same URL and the INSERT is not "new" each round
+window.__drive = {};
+window.DriveApp = { Access: { ANYONE_WITH_LINK: 1 }, Permission: { VIEW: 1 },
+  getFolderById: () => ({ createFile: (blob) => {
+    let h = 7; for (const b of blob.getBytes()) h = (h * 31 + b) | 0;
+    const id = 'F' + String(h >>> 0).padStart(29, '0');
+    window.__drive[id] = window.__drive[id] || { trashed: false };
+    return { setSharing() {}, getUrl: () => 'https://drive.google.com/file/d/' + id + '/view?usp=drivesdk' };
+  } }),
+  getFileById: (id) => ({
+    getParents: () => { let done = false; return { hasNext: () => !done, next: () => { done = true; return { getId: () => FOLDER_ID }; } }; },
+    // need != null = this run stopped at an unknown query and will be replayed; real GAS never sees that run
+    setTrashed: (v) => { if (!need && window.__drive[id]) window.__drive[id].trashed = v; } }),
 };
 window.ContentService = { createTextOutput: (s) => ({ setMimeType() { return JSON.parse(s); } }), MimeType: { JSON: 1, TEXT: 2 } };
 

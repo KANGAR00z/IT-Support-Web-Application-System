@@ -29,7 +29,7 @@ function ticketSelectSql_(withResolution, extraCol) {
   return `
     SELECT
       t."Ticket_ID", t."Issue_Detail", t."Status", t."IT_In_Charge", t."Doc_PDF_URL",
-      t."Created_Date", t."Accepted_Date", t."Closed_Date", t."Deleted_At",
+      t."Image_URL", t."Contact_Phone", t."Created_Date", t."Accepted_Date", t."Closed_Date", t."Deleted_At",
       c."Category_Name", o."Office_Name", o."Province", b."Branch_Name", d."Dept_Name",
       u."Full_Name"  AS "Reporter_Name",
       it."Full_Name" AS "Assignee_Name"` +
@@ -60,7 +60,9 @@ function mapTicket_(rs, withResolution) {
     createdAt: toIsoLocal_(rs, 'Created_Date'),
     acceptedAt: toIsoLocal_(rs, 'Accepted_Date'),
     closedAt: toIsoLocal_(rs, 'Closed_Date'),
-    pdfUrl: strOrNull_(rs, 'Doc_PDF_URL') || ''
+    pdfUrl: strOrNull_(rs, 'Doc_PDF_URL') || '',
+    imageUrl: strOrNull_(rs, 'Image_URL') || '',
+    phone: strOrNull_(rs, 'Contact_Phone') || ''   // เบอร์ภายในตอนแจ้ง (ว่าง = ตั๋วก่อน 2026-11-02 / ไม่ได้กรอก)
   };
   if (withResolution) {
     t.resolution = strOrNull_(rs, 'Resolution_Text') || '';
@@ -196,7 +198,7 @@ function findTicketsByReporter_(conn, userId) {
   return list;
 }
 
-// t = { reporterId, officeId, branchId, departmentId, categoryId, issueDetail, imageUrl, docPdfUrl }
+// t = { reporterId, officeId, branchId, departmentId, categoryId, issueDetail, imageUrl, docPdfUrl, phone }
 // พื้นที่ (Office_ID) เอาจากสาขาฝั่ง server ให้ตรงกันเสมอ — ใช้ค่าจาก client เฉพาะเมื่อไม่รู้จักสาขานั้น
 // สาขา/ส่วนผ่าน SELECT ก่อน: id ที่ไม่มีจริง (ถูกลบไปแล้ว / ตัวเลือกสำรองของหน้าเว็บที่ DB ยังไม่มี)
 // เป็น NULL แทน FK error ที่ทำให้แจ้งซ่อมไม่ได้ทั้งใบ — พื้นที่ยังได้จากค่าที่ client ส่งมา
@@ -204,10 +206,10 @@ function insertTicket_(conn, t) {
   const stmt = conn.prepareStatement(`
     INSERT INTO "TICKET"
       ("LINE_User_ID", "Office_ID", "Branch_ID", "Dept_ID", "Category_ID",
-       "Issue_Detail", "Image_URL", "Doc_PDF_URL", "Status")
+       "Issue_Detail", "Image_URL", "Doc_PDF_URL", "Status", "Contact_Phone")
     VALUES (?, COALESCE((SELECT "Office_ID" FROM "BRANCH" WHERE "Branch_ID" = ?), ?),
             (SELECT "Branch_ID" FROM "BRANCH" WHERE "Branch_ID" = ?),
-            (SELECT "Dept_ID" FROM "DEPARTMENT" WHERE "Dept_ID" = ?), ?, ?, ?, ?, ?)
+            (SELECT "Dept_ID" FROM "DEPARTMENT" WHERE "Dept_ID" = ?), ?, ?, ?, ?, ?, ?)
     RETURNING "Ticket_ID"
   `);
   stmt.setString(1, t.reporterId);
@@ -220,6 +222,7 @@ function insertTicket_(conn, t) {
   setStringOrNull(stmt, 8, t.imageUrl);
   setStringOrNull(stmt, 9, t.docPdfUrl);
   stmt.setInt(10, TICKET_STATUS.OPEN);
+  setStringOrNull(stmt, 11, t.phone);
   const rs = stmt.executeQuery();
   return rs.next() ? rs.getInt('Ticket_ID') : null;
 }
@@ -266,11 +269,13 @@ function softDeleteTicket_(conn, ticketId, byUserId) {
   return stmt.executeUpdate();
 }
 
-// มีตั๋วไหนใช้ไฟล์ Drive นี้เป็นเอกสารฉบับจริงอยู่ไหม (ห้ามลบไฟล์แบบนั้นในฐานะ "ไฟล์ชั่วคราว")
+// มีตั๋วไหนใช้ไฟล์ Drive นี้อยู่ไหม — เอกสารฉบับจริง หรือรูปอาการเสีย (อยู่โฟลเดอร์เดียวกัน)
+// ห้ามลบไฟล์แบบนั้นในฐานะ "ไฟล์ชั่วคราว" (deleteTempPdf เปิดให้ทุกคนที่ login)
 function isPdfUsedByTicket_(conn, fileId) {
   const stmt = conn.prepareStatement(
-    'SELECT 1 FROM "TICKET" WHERE "Doc_PDF_URL" LIKE ? LIMIT 1');
+    'SELECT 1 FROM "TICKET" WHERE "Doc_PDF_URL" LIKE ? OR "Image_URL" LIKE ? LIMIT 1');
   stmt.setString(1, '%' + fileId + '%');
+  stmt.setString(2, '%' + fileId + '%');
   return stmt.executeQuery().next();
 }
 
