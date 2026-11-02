@@ -1,7 +1,8 @@
-// FAST TICKET API บน Cloudflare Workers — วิธีตั้งค่า/deploy ดู worker/README.md
+// FAST TICKET backend (API + ฐานข้อมูล) บน Cloudflare Workers — วิธีตั้งค่า/deploy ดู worker/README.md
+// คนละตัวกับ fast-ticket-app (หน้าเว็บ = โฟลเดอร์ DEMO/ อัปโหลดผ่าน dashboard) — ห้ามอัป DEMO มาที่ตัวนี้
 {
 	"$schema": "node_modules/wrangler/config-schema.json",
-	"name": "fast-ticket-api",
+	"name": "fast-ticket-backend",
 	"main": "src/index.js",
 	"compatibility_date": "2025-06-01",
 	// ไดรเวอร์ postgres ใช้ API ของ Node (net/tls) — Workers รองรับผ่าน flag นี้
@@ -20,7 +21,7 @@
 		// ต้องตรงกับ Script Property "LIFF_CHANNEL_ID" ของ GAS
 		"LIFF_CHANNEL_ID": "2010392375"
 	},
-	// ดู log ย้อนหลังได้ใน Cloudflare dashboard -> Workers -> fast-ticket-api -> Logs
+	// ดู log ย้อนหลังได้ใน Cloudflare dashboard -> Workers -> fast-ticket-backend -> Logs
 	"observability": {
 		"enabled": true
 	}

@@ -347,7 +347,7 @@ SVG `preserveAspectRatio` แบบ meet จะย่อ **ทั้งภาพ
 |---|---|---|
 | `DEMO/` | Cloudflare Worker `fast-ticket-app` | ลากทั้งโฟลเดอร์อัปบน dashboard (ต้องครบ 9 ไฟล์ รวม `theme.js`) |
 | `gas/` | Google Apps Script | ก๊อปวางในตัว editor ทุกไฟล์ (ยกเว้น `Code.gs`) → **Deploy → New version** (กด Save เฉยๆ ไม่พอ) |
-| `worker/` | Cloudflare Worker `fast-ticket-api` | `npx wrangler deploy` ในโฟลเดอร์ `worker/` (ต้องมี Node.js — ดู `worker/README.md`) |
+| `worker/` | Cloudflare Worker `fast-ticket-backend` | `npx wrangler deploy` ในโฟลเดอร์ `worker/` (ต้องมี Node.js — ดู `worker/README.md`) |
 
 - Live: <https://fast-ticket-app.darkness7256.workers.dev/>
 - config ของ Worker หน้าเว็บ (`fast-ticket-app`) อยู่ **นอก repo** · ของ API อยู่ที่ `worker/wrangler.jsonc`

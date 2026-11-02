@@ -3,7 +3,7 @@
 ทางใหม่ของ backend: หน้าเว็บคุยกับ **Cloudflare Worker** ซึ่งต่อฐานข้อมูล Supabase ผ่าน **Hyperdrive** แทน Google Apps Script
 
 ```
-หน้าเว็บ (LIFF) ──► Worker (fast-ticket-api) ──► Hyperdrive ──► Supabase Postgres   ← คำสั่งอ่าน/เขียนข้อมูลทั้งหมด
+หน้าเว็บ (LIFF) ──► Worker (fast-ticket-backend) ──► Hyperdrive ──► Supabase Postgres   ← คำสั่งอ่าน/เขียนข้อมูลทั้งหมด
               └──► Google Apps Script ──► Google Drive + Supabase                  ← สร้าง PDF · แจ้งซ่อม (พร้อมรูป) · ลบ PDF ร่าง
 ```
 
@@ -13,6 +13,15 @@ Worker รันที่ Cloudflare ใกล้ผู้ใช้ และ Hy
 
 **ส่วนที่ยังอยู่ GAS:** `generateDocument` · `createTicket` · `deleteTempPdf` — ต้องใช้ Google Drive (เก็บ PDF/รูป)
 ซึ่ง Worker ใช้ไม่ได้ · หน้าเว็บแยกส่งเองอัตโนมัติ (`FT_GAS_ONLY` ใน `DEMO/common.js`)
+
+## Worker 2 ตัวใน Cloudflare — อย่าสับสน
+
+| ชื่อใน dashboard | คืออะไร | deploy ยังไง |
+|---|---|---|
+| **fast-ticket-app** | หน้าเว็บ (`DEMO/`) ที่ผู้ใช้เปิดผ่าน LINE | อัปโหลดโฟลเดอร์ `DEMO` ผ่าน dashboard |
+| **fast-ticket-backend** | backend (โฟลเดอร์นี้) — รับคำสั่งจากหน้าเว็บ ต่อฐานข้อมูล | `npx wrangler deploy` ในโฟลเดอร์ `worker/` เท่านั้น |
+
+ห้ามอัป `DEMO` ไปที่ fast-ticket-backend (โค้ด backend จะถูกทับ — ถ้าเผลอ ให้ `npx wrangler deploy` ใหม่)
 
 ## ไฟล์
 
@@ -82,12 +91,12 @@ npx wrangler hyperdrive create fast-ticket-db --caching-disabled --connection-st
 npx wrangler deploy
 ```
 
-ได้ URL เช่น `https://fast-ticket-api.<ชื่อบัญชี>.workers.dev` — เปิดในเบราว์เซอร์ต้องเห็น `"พร้อมทำงาน"`
+ได้ URL เช่น `https://fast-ticket-backend.<ชื่อบัญชี>.workers.dev` — เปิดในเบราว์เซอร์ต้องเห็น `"พร้อมทำงาน"`
 
 ### 6. สลับหน้าเว็บมาใช้ Worker
 1. ใส่ URL จากขั้นที่ 5 ใน `DEMO/config.js`:
    ```js
-   const WORKER_API_URL = "https://fast-ticket-api.<ชื่อบัญชี>.workers.dev";
+   const WORKER_API_URL = "https://fast-ticket-backend.<ชื่อบัญชี>.workers.dev";
    ```
 2. อัปโหลดโฟลเดอร์ `DEMO` ขึ้น Cloudflare (`fast-ticket-app`) เหมือนทุกครั้ง
 3. ทดสอบ: เปิดหน้า admin → ดูบอร์ด แดชบอร์ด ผู้ใช้งาน · รับงาน/ปิดงาน 1 ใบ · แจ้งซ่อม 1 ใบจากฟอร์ม
@@ -103,7 +112,7 @@ npx wrangler deploy
 | ทำอะไร | คำสั่ง (ในโฟลเดอร์ `worker/`) |
 |---|---|
 | deploy หลังแก้โค้ด | `npx wrangler deploy` |
-| ดู log สด (error ของแต่ละคำขอ) | `npx wrangler tail` หรือ Cloudflare dashboard → Workers → fast-ticket-api → Logs |
+| ดู log สด (error ของแต่ละคำขอ) | `npx wrangler tail` หรือ Cloudflare dashboard → Workers → fast-ticket-backend → Logs |
 | เปลี่ยนรหัสผ่าน DB | `npx wrangler hyperdrive update <id> --origin-password="รหัสใหม่"` (+ แก้ `gas/Code.gs` ด้วย) |
 
 ## ข้อแตกต่างจาก GAS ที่ควรรู้

@@ -1,5 +1,5 @@
 {
-  "name": "fast-ticket-api",
+  "name": "fast-ticket-backend",
   "private": true,
   "type": "module",
   "scripts": {
