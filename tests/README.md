@@ -18,7 +18,7 @@
 python -m http.server 8770
 ```
 
-เปิด <http://localhost:8770/tests/> รอ ~5-10 วินาที บรรทัดสุดท้ายจะขึ้น `PASS: 102/102 checks passed` (GAS)
+เปิด <http://localhost:8770/tests/> รอ ~5-10 วินาที บรรทัดสุดท้ายจะขึ้น `PASS: 111/111 checks passed` (GAS)
 
 ทดสอบ Worker (`worker/src`) ด้วยข้อมูลและรายการตรวจชุดเดียวกัน: <http://localhost:8770/tests/?target=worker>
 → `PASS: 96/96` (น้อยกว่าเพราะการอัปโหลดรูปตอนแจ้งซ่อมอยู่ที่ GAS เท่านั้น)

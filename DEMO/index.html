@@ -212,8 +212,12 @@
 
         <div class="space-y-1.5">
           <label for="description" class="block text-sm font-bold text-slate-700">รายละเอียดอาการเสีย <span class="text-red-500">*</span></label>
-          <textarea id="description" required aria-describedby="descriptionErr" placeholder="อธิบายอาการที่พบ เช่น เปิดคอมไม่ติด หน้าจอกระพริบ..." class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 h-28 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm"></textarea>
-          <p id="descriptionErr" class="field-err hidden"></p>
+          <!-- ไม่เกิน 400 ตัวอักษร = เท่ากล่องอาการในใบแจ้งซ่อม A4 (gas/Template.html, DETAIL_MAX) -->
+          <textarea id="description" required maxlength="400" aria-describedby="descriptionErr descriptionCount" placeholder="อธิบายอาการที่พบ เช่น เปิดคอมไม่ติด หน้าจอกระพริบ..." class="w-full bg-white border border-slate-300 text-slate-800 rounded-xl px-4 py-3 h-28 resize-none focus:outline-none focus:ring-2 focus:ring-brand-500 transition-all shadow-sm"></textarea>
+          <div class="flex items-start justify-between gap-2">
+            <p id="descriptionErr" class="field-err hidden"></p>
+            <span id="descriptionCount" class="ml-auto mt-1 text-xs text-slate-500 tabular-nums" aria-live="polite">0/400</span>
+          </div>
         </div>
 
         <!-- รูปอาการเสีย (ไม่บังคับ) — ย่อในเครื่องก่อนส่ง แล้ว server เก็บใน Drive โฟลเดอร์เดียวกับ PDF (TICKET.Image_URL) -->
@@ -277,7 +281,7 @@
   <div id="previewScreen" class="hidden fixed inset-0 z-[100] bg-slate-100 flex flex-col h-[100dvh]">
     <div class="bg-white border-b border-slate-200 px-4 py-3 flex items-center justify-between gap-2 shadow-sm shrink-0">
       <div class="font-bold text-base sm:text-lg text-slate-800 flex items-center gap-2 min-w-0">
-        <span data-icon="file-text" data-icon-class="w-5 h-5 text-slate-500"></span><span class="truncate">ตรวจสอบเอกสารก่อนส่ง</span>
+        <span data-icon="file-text" data-icon-class="w-5 h-5 text-slate-500"></span><span id="previewTitle" class="truncate">ตรวจสอบเอกสารก่อนส่ง</span>
       </div>
       <button id="closePreviewBtn" aria-label="ปิด" class="text-slate-400 hover:text-slate-600 leading-none w-10 h-10 flex items-center justify-center shrink-0"><span data-icon="x" data-icon-class="w-6 h-6"></span></button>
     </div>
@@ -475,6 +479,16 @@
       return !!r.name;
     }
 
+    // ---------- ตัวนับตัวอักษรของช่องอาการ ----------
+    const DETAIL_MAX = 400;
+    function syncDetailCount() {
+      const n = $("description").value.length;
+      const el = $("descriptionCount");
+      el.textContent = n + "/" + DETAIL_MAX;
+      el.className = "ml-auto mt-1 text-xs tabular-nums " + (n >= DETAIL_MAX ? "text-red-600 font-semibold" : n >= DETAIL_MAX - 50 ? "text-amber-700" : "text-slate-500");
+    }
+    $("description").addEventListener("input", syncDetailCount);
+
     // ---------- ร่างที่พิมพ์ค้างไว้ (เลขครุภัณฑ์ / หมวด / อาการ) ----------
     // LINE ปิดหน้าเอง / ต้อง login ใหม่ / กดไปดูประวัติ = หน้าโหลดใหม่ ข้อความที่พิมพ์ไว้ต้องไม่หาย
     // ผูก LINE userId เหมือน ft_reporter · ลบเมื่อแจ้งสำเร็จ · ไม่จำรูป (ใหญ่เกิน localStorage)
@@ -495,7 +509,7 @@
       try { d = JSON.parse(localStorage.getItem(DRAFT_KEY) || 'null'); } catch (e) {}
       if (!d || d.owner !== userId) return false;
       $("assetId").value = d.assetId || '';
-      $("description").value = d.description || '';
+      $("description").value = (d.description || '').slice(0, DETAIL_MAX);   // ร่างจากรุ่นก่อนจำกัดความยาว
       if (d.category && [...$("category").options].some(o => o.value === d.category)) $("category").value = d.category;
       return !!((d.description || '') + (d.assetId || '')).trim();
     }
@@ -606,6 +620,7 @@
         syncProfileDisplay();
         $("historyLink").href = historyUrl();
         if (restoreDraft(profile.userId)) ftToast("เติมข้อความที่พิมพ์ค้างไว้ให้แล้ว", "info");
+        syncDetailCount();
 
         if (profile.pictureUrl) {
           const img = $("profileImage");
@@ -760,7 +775,8 @@
         phone: $("inputPhone").value.trim() || '-', // เบอร์โทรศัพท์ภายใน (แทนที่ - หลังโทร.)
         asset_id: $("assetId").value.trim(),
         problem_type: cleanCategory(categorySelect.options[categorySelect.selectedIndex].text), // ตัด emoji + (English)
-        description: $("description").value.trim()
+        description: $("description").value.trim(),
+        photo: photo ? photo.url : ''   // ฝังในใบแจ้งซ่อม (ขวาของกล่องอาการ) — server ตรวจว่าเป็น data:image จริง
       };
     }
 
@@ -803,6 +819,8 @@
         const response = await callBackend("generateDocument", collectDocumentData());
         if (response.status === 'success') {
           currentTicketPayload.docPdfUrl = response.url;
+          // เลขที่จองไว้ (พิมพ์อยู่ในใบแจ้งซ่อมแล้ว) — ตอนกดยืนยันจะได้เลขนี้
+          $('previewTitle').innerText = 'ตรวจสอบเอกสารก่อนส่ง' + (response.ticketId ? ' · TK-' + response.ticketId : '');
           const previewUrl = response.url
             .replace('/view?usp=drivesdk', '/preview')
             .replace('/view', '/preview');
@@ -892,6 +910,7 @@
         if (response.status === 'success') {
           saveReporter();
           form.reset();
+          syncDetailCount();
           $("category").value = "";   // กันไว้อีกชั้น — ต้องกลับเป็น "-- เลือกหมวดหมู่ --" เสมอ
           clearDraft();
           clearPhoto();

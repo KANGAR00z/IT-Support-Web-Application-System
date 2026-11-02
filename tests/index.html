@@ -183,6 +183,14 @@ window.DriveApp = { Access: { ANYONE_WITH_LINK: 1 }, Permission: { VIEW: 1 },
     // need != null = this run stopped at an unknown query and will be replayed; real GAS never sees that run
     setTrashed: (v) => { if (!need && window.__drive[id]) window.__drive[id].trashed = v; } }),
 };
+// generateDocument: render the template as JSON of its data (window.__memo = what Template.html would print)
+window.HtmlService = { createTemplateFromFile: () => {
+  const t = {};
+  t.evaluate = () => { window.__memo = t.d; return { getContent: () => JSON.stringify(t.d) }; };
+  return t;
+} };
+{ const nb = window.Utilities.newBlob;
+  window.Utilities.newBlob = (d, mime, name) => { const b = nb(d); b.getAs = () => b; b.setName = () => b; return b; }; }
 window.ContentService = { createTextOutput: (s) => ({ setMimeType() { return JSON.parse(s); } }), MimeType: { JSON: 1, TEXT: 2 } };
 
 // ---------- load the backend ----------

@@ -163,22 +163,64 @@ function setIntOrNull_(stmt, index, value) {
 }
 
 // -----------------------------------------------------------------------------
-// Drive: บันทึกข้อความ PDF จาก Template.html (แชร์แบบมีลิงก์ดูได้) -> คืน URL
-// ตัวแปรที่ template ใช้ต้องตั้งครบทุกตัว — ตัวที่ไม่ได้ตั้ง template จะ error
+// Drive: ใบแจ้งซ่อม PDF (A4 หน้าเดียว) จาก Template.html (แชร์แบบมีลิงก์ดูได้) -> คืน URL
+// template พิมพ์แค่ d.xxx — ค่าทุกช่องเตรียมใน memoData_ ที่นี่ (เลขไทย, แยกสาขา/ส่วน, ช่องติ๊ก)
 // -----------------------------------------------------------------------------
-function renderMemoPdf_(form) {
+const TH_MONTHS_ = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+                    'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
+const MEMO_CATEGORIES_ = ['ฮาร์ดแวร์', 'ซอฟต์แวร์', 'เครือข่าย'];   // ช่องติ๊กในแบบฟอร์ม (+ "อื่น ๆ")
+
+function toThaiDigits_(x) {
+  return String(x === undefined || x === null ? '' : x).replace(/[0-9]/g, function (d) { return '๐๑๒๓๔๕๖๗๘๙'[d]; });
+}
+
+// รูปจากหน้าเว็บ (data URL ที่ย่อแล้ว) — ยอมเฉพาะ data:image/...;base64 ล้วน เพราะ template พิมพ์แบบไม่ escape
+function memoPhoto_(v) {
+  const s = String(v || '');
+  if (!/^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+\/=]+$/.test(s)) return '';
+  return s.length * 3 / 4 > IMAGE_MAX_BYTES ? '' : s;
+}
+
+// form = ค่าจากฟอร์ม (collectDocumentData ใน index.html) · ticketId = เลขที่จองไว้ (reserveTicketId_)
+function memoData_(form, ticketId, now) {
+  // เวลาไทย (UTC+7) โดยไม่ขึ้นกับ time zone ของโปรเจกต์ GAS
+  const t = new Date(now.getTime() + 7 * 3600 * 1000);
+  const hm = ('0' + t.getUTCHours()).slice(-2) + '.' + ('0' + t.getUTCMinutes()).slice(-2);
+  const year = t.getUTCFullYear() + 543;
+
+  // "ส่วนราชการ" = ชื่อเต็มสาขา + ส่วน — ฟอร์มส่งชื่อส่วนมาแยก (section) จึงตัดตรงนั้นได้แม่น
+  const dept = cleanText_(form.department);
+  const sec = cleanText_(form.section);
+  const cut = sec && dept.slice(-(sec.length + 1)) === ' ' + sec ? dept.length - sec.length - 1 : dept.lastIndexOf(' ส่วน');
+
+  const cat = cleanText_(form.problem_type);
+  const other = MEMO_CATEGORIES_.indexOf(cat) === -1;
+  const cats = MEMO_CATEGORIES_.map(function (k) { return { label: k, on: k === cat }; });
+  cats.push({ label: other && cat && !/^อื่น/.test(cat) ? 'อื่น ๆ (' + cat + ')' : 'อื่น ๆ', on: other && !!cat });
+
+  const phone = cleanPhone_(form.phone);
+  return {
+    code: ticketId ? ticketCode_(ticketId) : '-',
+    name: toThaiDigits_(cleanText_(form.name) || '-'),
+    position: toThaiDigits_(cleanText_(form.position) || '-'),
+    branch: toThaiDigits_((cut > 0 ? dept.substring(0, cut) : dept) || '-'),
+    section: toThaiDigits_(sec || (cut > 0 ? dept.substring(cut + 1) : '') || '-'),
+    phone: phone ? toThaiDigits_(phone) : '-',
+    date: toThaiDigits_(t.getUTCDate() + ' ' + TH_MONTHS_[t.getUTCMonth()] + ' ' + year + ' เวลา ' + hm + ' น.'),
+    printed: toThaiDigits_(t.getUTCDate() + '/' + (t.getUTCMonth() + 1) + '/' + year + ' ' + hm + ' น.'),
+    cats: cats,
+    asset: cleanText_(form.asset_id) || '-',   // เลขครุภัณฑ์คงเลขอารบิก ให้ตรงกับป้ายบนเครื่อง
+    description: toThaiDigits_(cleanText_(form.description).slice(0, DETAIL_MAX) || '-'),
+    photo: memoPhoto_(form.photo)
+  };
+}
+
+function renderMemoPdf_(form, ticketId) {
   const tpl = HtmlService.createTemplateFromFile('Template');
-  tpl.name = form.name || '-';
-  tpl.position = form.position || '-';
-  tpl.department = form.department || '-';   // ส่วนราชการเต็ม = พื้นที่ + สาขา + ส่วน
-  tpl.section = form.section || '';           // ใช้ตัดบรรทัด "ส่วนราชการ" ให้แม่น
-  tpl.asset_id = form.asset_id || '-';
-  tpl.problem_type = form.problem_type || '-';
-  tpl.description = form.description || '-';
-  tpl.phone = form.phone || '-';
+  tpl.d = memoData_(form, ticketId, new Date());
 
   const blob = Utilities.newBlob(tpl.evaluate().getContent(), 'text/html', 'temp.html').getAs('application/pdf');
-  blob.setName('แจ้งซ่อม_' + (form.name || 'user') + '_' + new Date().getTime() + '.pdf');
+  blob.setName('แจ้งซ่อม_' + (ticketId ? ticketCode_(ticketId) : 'draft') + '_' + new Date().getTime() + '.pdf');
 
   const file = DriveApp.getFolderById(FOLDER_ID).createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);

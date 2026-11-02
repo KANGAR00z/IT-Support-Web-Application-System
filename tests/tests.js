@@ -286,6 +286,25 @@ if (window.TARGET === 'worker') {
   const r2 = await api('createTicket', Object.assign({}, base, { phone: '-' }), 'Ustaff005');
   const t2 = (await api('getMyTickets', {}, 'Ustaff005')).tickets.find(x => x.id === r2.ticketId) || {};
   eq('no phone / no photo', [t2.phone, t2.imageUrl], ['', '']);
+
+  // ใบแจ้งซ่อม A4: จองเลขตอนสร้างเอกสาร (พิมพ์ลงใบ) -> createTicket ได้เลขเดียวกัน
+  const doc1 = await api('generateDocument', { name: 'ทดสอบ เอกสาร', position: 'ทดสอบ', problem_type: 'เครือข่าย',
+    department: 'สำนักงานสรรพสามิตพื้นที่ตรัง สาขาเมืองตรัง ส่วนอำนวยการ', section: 'ส่วนอำนวยการ',
+    phone: '1234', description: 'x'.repeat(450), photo: 'data:image/jpeg;base64,AAAA' }, 'Ustaff007');
+  ok('document ok ' + JSON.stringify(doc1), doc1.status === 'success' && doc1.ticketId > 0);
+  const m = window.__memo || {};
+  eq('memo fields', [m.code, m.branch, m.section, m.phone, (m.description || '').length, !!m.photo, (m.cats || []).filter(c => c.on).map(c => c.label)],
+    ['TK-' + doc1.ticketId, 'สำนักงานสรรพสามิตพื้นที่ตรัง สาขาเมืองตรัง', 'ส่วนอำนวยการ', '๑๒๓๔', 400, true, ['เครือข่าย']]);
+  const doc2 = await api('generateDocument', { name: 'x', problem_type: 'ระบบลงเวลา', photo: 'javascript:alert(1)' }, 'Ustaff007');
+  ok('regenerate keeps the reserved number', doc2.ticketId === doc1.ticketId);
+  ok('unsafe photo dropped', window.__memo.photo === '');
+  eq('other category', window.__memo.cats.filter(c => c.on).map(c => c.label), ['อื่น ๆ (ระบบลงเวลา)']);
+  ok('another user gets another number', (await api('generateDocument', { name: 'y' }, 'Ustaff008')).ticketId !== doc1.ticketId);
+  const c1 = await api('createTicket', Object.assign({}, base, { docPdfUrl: doc1.url }), 'Ustaff007');
+  eq('ticket uses the reserved number ' + JSON.stringify(c1), c1.ticketId, doc1.ticketId);
+  const c2 = await api('createTicket', base, 'Ustaff007');
+  ok('next ticket gets a new number', c2.status === 'success' && c2.ticketId > doc1.ticketId);
+  ok('detail over limit rejected', (await api('createTicket', Object.assign({}, base, { issueDetail: 'ก'.repeat(500) }), 'Ustaff007')).status === 'error');
 }
 
 window.__testResult = { passes, fails };

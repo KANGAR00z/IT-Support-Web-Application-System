@@ -27,6 +27,13 @@ const FOLDER_ID = '1wQSNqJ0QHgm9hKaVf4sm0_fIXprEpSsc';
 const IMAGE_MAX_BYTES = 3 * 1024 * 1024;
 const IMAGE_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
 
+// อาการเสียยาวได้เท่ากล่องในใบแจ้งซ่อม A4 (Template.html) — หน้าเว็บจำกัดช่องกรอกไว้เท่ากัน
+const DETAIL_MAX = 400;
+
+// เลขตั๋วที่จองไว้ตอนสร้างเอกสาร (ใบแจ้งซ่อมต้องพิมพ์เลข TK ก่อนกดยืนยัน) — จำไว้ให้ใช้ตอน createTicket
+// สร้างเอกสารซ้ำ (กลับไปแก้แล้วสร้างใหม่) ได้เลขเดิม ไม่เปลืองเลข · ไม่ยืนยันภายในเวลานี้ = เลขนั้นข้ามไป
+const TICKET_RESERVE_TTL = 3600;   // วินาที
+
 // Status: 1 = รอรับเรื่อง · 2 = กำลังดำเนินการ · 3 = เสร็จสิ้น (ผูกกับคอลัมน์บอร์ดใน admin.js)
 const TICKET_STATUS = { OPEN: 1, IN_PROGRESS: 2, CLOSED: 3 };
 

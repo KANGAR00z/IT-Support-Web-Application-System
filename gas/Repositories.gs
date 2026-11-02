@@ -202,29 +202,47 @@ function findTicketsByReporter_(conn, userId) {
 // พื้นที่ (Office_ID) เอาจากสาขาฝั่ง server ให้ตรงกันเสมอ — ใช้ค่าจาก client เฉพาะเมื่อไม่รู้จักสาขานั้น
 // สาขา/ส่วนผ่าน SELECT ก่อน: id ที่ไม่มีจริง (ถูกลบไปแล้ว / ตัวเลือกสำรองของหน้าเว็บที่ DB ยังไม่มี)
 // เป็น NULL แทน FK error ที่ทำให้แจ้งซ่อมไม่ได้ทั้งใบ — พื้นที่ยังได้จากค่าที่ client ส่งมา
+// t.id = เลขที่จองไว้ตอนสร้างเอกสาร (ว่าง = ออกเลขใหม่จาก sequence)
+// OVERRIDING SYSTEM VALUE: ใส่เลขเองได้ทั้งคอลัมน์แบบ serial และ identity (GENERATED ALWAYS ต้องมี)
 function insertTicket_(conn, t) {
   const stmt = conn.prepareStatement(`
     INSERT INTO "TICKET"
-      ("LINE_User_ID", "Office_ID", "Branch_ID", "Dept_ID", "Category_ID",
+      ("Ticket_ID", "LINE_User_ID", "Office_ID", "Branch_ID", "Dept_ID", "Category_ID",
        "Issue_Detail", "Image_URL", "Doc_PDF_URL", "Status", "Contact_Phone")
-    VALUES (?, COALESCE((SELECT "Office_ID" FROM "BRANCH" WHERE "Branch_ID" = ?), ?),
+    OVERRIDING SYSTEM VALUE
+    VALUES (COALESCE(?, nextval(pg_get_serial_sequence('"TICKET"', 'Ticket_ID'))),
+            ?, COALESCE((SELECT "Office_ID" FROM "BRANCH" WHERE "Branch_ID" = ?), ?),
             (SELECT "Branch_ID" FROM "BRANCH" WHERE "Branch_ID" = ?),
             (SELECT "Dept_ID" FROM "DEPARTMENT" WHERE "Dept_ID" = ?), ?, ?, ?, ?, ?, ?)
     RETURNING "Ticket_ID"
   `);
-  stmt.setString(1, t.reporterId);
-  setIntOrNull_(stmt, 2, t.branchId);
-  setIntOrNull_(stmt, 3, t.officeId);
-  setIntOrNull_(stmt, 4, t.branchId);
-  stmt.setInt(5, t.departmentId || 0);
-  stmt.setInt(6, t.categoryId);
-  stmt.setString(7, t.issueDetail);
-  setStringOrNull(stmt, 8, t.imageUrl);
-  setStringOrNull(stmt, 9, t.docPdfUrl);
-  stmt.setInt(10, TICKET_STATUS.OPEN);
-  setStringOrNull(stmt, 11, t.phone);
+  setIntOrNull_(stmt, 1, t.id);
+  stmt.setString(2, t.reporterId);
+  setIntOrNull_(stmt, 3, t.branchId);
+  setIntOrNull_(stmt, 4, t.officeId);
+  setIntOrNull_(stmt, 5, t.branchId);
+  stmt.setInt(6, t.departmentId || 0);
+  stmt.setInt(7, t.categoryId);
+  stmt.setString(8, t.issueDetail);
+  setStringOrNull(stmt, 9, t.imageUrl);
+  setStringOrNull(stmt, 10, t.docPdfUrl);
+  stmt.setInt(11, TICKET_STATUS.OPEN);
+  setStringOrNull(stmt, 12, t.phone);
   const rs = stmt.executeQuery();
   return rs.next() ? rs.getInt('Ticket_ID') : null;
+}
+
+// ออกเลขตั๋วถัดไปจาก sequence โดยยังไม่สร้างแถว (จองไว้พิมพ์ลงใบแจ้งซ่อม) — เลขที่ไม่ได้ใช้จะข้ามไปเฉยๆ
+function nextTicketId_(conn) {
+  const rs = conn.prepareStatement(`SELECT nextval(pg_get_serial_sequence('"TICKET"', 'Ticket_ID')) AS id`).executeQuery();
+  rs.next();
+  return rs.getInt('id');
+}
+
+function ticketExists_(conn, ticketId) {
+  const stmt = conn.prepareStatement('SELECT 1 FROM "TICKET" WHERE "Ticket_ID" = ?');
+  stmt.setInt(1, ticketId);
+  return stmt.executeQuery().next();
 }
 
 // รับงาน: ผู้รับ + เวลา · ล้าง Closed_Date เผื่อรับงานที่เคยปิดแล้วเปิดใหม่ — คืนจำนวนแถวที่แก้

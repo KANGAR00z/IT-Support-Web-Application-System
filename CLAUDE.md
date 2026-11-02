@@ -57,6 +57,16 @@ scope เดียวกัน ชั้นจึงเป็นข้อตก�
 > `HtmlService.createTemplateFromFile('Template')` จากโปรเจกต์ Apps Script
 > แก้ในรีโปอย่างเดียวไม่มีผล ต้องก๊อปไปวางใน GAS แล้ว deploy version ใหม่
 
+**ใบแจ้งซ่อม PDF (2026-11-03) = แบบตาราง A4 หน้าเดียว** (แบบร่าง: `docs/FAST_TICKET_ใบแจ้งซ่อม_A4_ร่าง.docx`)
+- template พิมพ์แค่ `d.xxx` — ค่าทุกช่อง (เลขไทย, แยกสาขา/ส่วน, ช่องติ๊กหมวด) เตรียมใน `memoData_` (`Infrastructure.gs`)
+- โลโก้กรมสรรพสามิต + QR (ลิงก์หน้าประวัติ ใช้ร่วมทุกใบ) ฝังเป็น base64 ใน template
+- รูปอาการเสีย: หน้าเว็บส่ง data URL มากับ `generateDocument` → `memoPhoto_` ยอมเฉพาะ `data:image/...;base64` แล้วพิมพ์แบบไม่ escape
+- **ห้ามเขียนแท็ก scriptlet (`<?`) ในคอมเมนต์ HTML ของ template** — GAS ประมวลผลด้วย → template พัง
+- **เลขตั๋วจองตอนสร้างเอกสาร** (`reserveTicketId_`: `nextval` + CacheService `resv_<userId>` 1 ชม.) แล้ว `createTicket`
+  ใช้เลขเดียวกัน (`insertTicket_` ใส่ id เองด้วย `OVERRIDING SYSTEM VALUE`) · สร้างเอกสารซ้ำได้เลขเดิม · ไม่ยืนยัน = เลขข้ามไป
+- ความสูงกล่องอาการ/รูปคงที่ = ไม่เกิน 1 หน้า · อาการไม่เกิน `DETAIL_MAX` 400 ตัวอักษร (ฟอร์มมี `maxlength` + ตัวนับ)
+  แก้ CSS ของ template ต้องลองอาการ 400 ตัว + รูป + หมวด "อื่น ๆ" ว่ายังหน้าเดียว
+
 ---
 
 ## 2. ข้อห้ามเด็ดขาด

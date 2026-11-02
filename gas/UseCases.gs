@@ -13,12 +13,26 @@ const STALE_PAGE_MSG = 'หน้าเว็บเป็นเวอร์ช�
    เอกสาร PDF (บันทึกข้อความราชการ)
    --------------------------------------------------------------------------- */
 
-function generateDocument(data) {
+// ใบแจ้งซ่อมพิมพ์เลข TK ตั้งแต่ตอนให้ผู้แจ้งตรวจ (ก่อนกดยืนยัน) -> จองเลขไว้ก่อน แล้ว createTicket ใช้เลขเดียวกัน
+function generateDocument(data, auth) {
+  const resv = reserveTicketId_(auth.userId);
+  if (resv.status === 'error') return resv;
   try {
-    return ok_({ url: renderMemoPdf_(data || {}) });
+    return ok_({ url: renderMemoPdf_(data || {}, resv.id), ticketId: resv.id });
   } catch (error) {
     return fail_(error.toString());
   }
+}
+
+// เลขที่จองไว้ของผู้ใช้คนนี้ (ยังไม่ถูกใช้) หรือออกเลขใหม่ — คืน { status, id }
+function reserveTicketId_(userId) {
+  const key = 'resv_' + userId;
+  const held = parseInt(cache_().get(key), 10) || 0;
+  const r = withConn_(function (conn) {
+    return ok_({ id: held && !ticketExists_(conn, held) ? held : nextTicketId_(conn) });
+  });
+  if (r.status === 'success') cache_().put(key, String(r.id), TICKET_RESERVE_TTL);
+  return r;
 }
 
 // ลบ PDF ฉบับร่างที่ผู้แจ้งกดยกเลิก — ACL '*' (ทุกคนที่ login) จึงต้องกันไม่ให้ใช้ลบเอกสารจริง:
@@ -58,6 +72,8 @@ function createTicket(data, auth) {
   const issueDetail = cleanText_(data.issueDetail);
   if (!categoryId) return fail_('กรุณาเลือกหมวดหมู่ปัญหา');
   if (!issueDetail) return fail_('กรุณากรอกรายละเอียดอาการ');
+  // issueDetail = "[เลขครุภัณฑ์] อาการ" — เผื่อความยาวเลขครุภัณฑ์ไว้ 60 ตัว
+  if (issueDetail.length > DETAIL_MAX + 60) return fail_('รายละเอียดอาการยาวเกิน ' + DETAIL_MAX + ' ตัวอักษร');
 
   // รูปอาการเสีย (ไม่บังคับ) — URL สร้างที่ server เท่านั้น ไม่รับ imageUrl จาก client
   let imageUrl = null;
@@ -72,6 +88,10 @@ function createTicket(data, auth) {
     }
   }
 
+  // เลขที่จองไว้ตอนสร้างเอกสาร (เลขเดียวกับที่พิมพ์ในใบแจ้งซ่อม) — ไม่มี/ถูกใช้ไปแล้ว = ออกเลขใหม่
+  const resvKey = 'resv_' + reporterId;
+  const reserved = parseInt(cache_().get(resvKey), 10) || 0;
+
   // ผู้ใช้ + ตั๋ว บันทึกพร้อมกัน — ตั๋วพังแล้วชื่อผู้ใช้ไม่ถูกเขียนทับไปครึ่งทาง
   const res = withTx_(function (conn) {
     upsertReporter_(conn, {
@@ -82,6 +102,7 @@ function createTicket(data, auth) {
       departmentId: departmentId
     });
     const ticketId = insertTicket_(conn, {
+      id: reserved && !ticketExists_(conn, reserved) ? reserved : 0,
       reporterId: reporterId, officeId: officeId, branchId: branchId, departmentId: departmentId,
       categoryId: categoryId, issueDetail: issueDetail,
       imageUrl: imageUrl, docPdfUrl: data.docPdfUrl, phone: cleanPhone_(data.phone)
@@ -92,6 +113,7 @@ function createTicket(data, auth) {
   if (res.status === 'error' && imageUrl) {
     try { trashMemoFile_(driveFileId_(imageUrl)); } catch (e) { /* ลบไม่ได้ก็แค่เหลือไฟล์ค้าง */ }
   }
+  if (res.status === 'success') cache_().remove(resvKey);   // ใช้เลขที่จองแล้ว — ใบถัดไปจองใหม่
   return res;
 }
 
